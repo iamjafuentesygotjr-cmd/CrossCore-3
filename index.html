@@ -486,7 +486,7 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
         <p id="rsvpLead" style="color:var(--sand);max-width:46ch;margin:1.2rem auto 0;line-height:1.85">No forms, no questions — your place at the celebration is already confirmed on our list. Just tap below so we know you're as excited as we are.</p>
         <button class="btn" id="seeYouBtn" style="margin-top:2.6rem;font-size:1.05rem;padding:1.25rem 3.2rem">See You There! 🎉</button>
         <div id="confirmedBadge" style="display:none;margin-top:2.4rem">
-          <div style="display:inline-flex;align-items:center;gap:.7rem;background:rgba(120,220,120,.1);border:1px solid rgba(120,220,120,.45);border-radius:999px;padding:1.05rem 2rem;font-size:1.02rem;color:#A8E6A8;font-weight:600;letter-spacing:.02em">✅ Attendance Confirmed — See you there!</div>
+          <div style="display:inline-flex;align-items:center;gap:.7rem;background:rgba(120,220,120,.1);border:1px solid rgba(120,220,120,.45);border-radius:999px;padding:1.05rem 2rem;font-size:1.02rem;color:#A8E6A8;font-weight:600;letter-spacing:.02em">✅ You're already confirmed. See you there!</div>
           <p style="color:var(--sand);font-size:.88rem;margin-top:1rem">Your confirmation is safely recorded. Feel free to revisit the invitation anytime.</p>
         </div>
       </div>
@@ -714,6 +714,23 @@ async function dbDel(key){
   if(hasStore){ try{ await window.storage.delete(key,true); }catch(e){} }
   delete mem[key]; }
 
+/* ---- server-side confirmation checks (Google Sheet via Apps Script) ---- */
+async function remoteStatus(email){
+  if(!SHEETS_WEBAPP_URL) return null;
+  try{
+    const r = await fetch(SHEETS_WEBAPP_URL + "?action=status&email=" + encodeURIComponent((email||"").trim().toLowerCase()));
+    const j = await r.json();
+    return (j && j.ok) ? j : null;
+  }catch(e){ return null; }
+}
+async function remoteList(){
+  if(!SHEETS_WEBAPP_URL) return null;
+  try{
+    const r = await fetch(SHEETS_WEBAPP_URL + "?action=list&key=" + encodeURIComponent(ADMIN_PASSCODE));
+    const j = await r.json();
+    return (j && j.ok) ? j.rows : null;
+  }catch(e){ return null; }
+}
 const norm = e => (e||"").trim().toLowerCase();
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 const rk = e => "cc3-rsvp:"+norm(e);
@@ -761,8 +778,11 @@ async function doLogin(){
   alreadyConfirmed = false;
   const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
   const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
-  const existing = await dbGet(rk(emp.email));
-  if(existing && existing.attending) markConfirmed();
+  let confirmed = false;
+  const st = await remoteStatus(emp.email);          /* server-side check — works from any device */
+  if(st) confirmed = !!st.confirmed;
+  else { const existing = await dbGet(rk(emp.email)); confirmed = !!(existing && existing.attending); }
+  if(confirmed) markConfirmed();
   startReveal();
 }
 function personalize(emp){
@@ -846,7 +866,9 @@ async function submitSeeYou(){
   if(alreadyConfirmed) return;
   const btn=document.getElementById("seeYouBtn");
   btn.disabled=true; btn.textContent="Confirming…";
-  /* re-check the backend so a revisit or double-tap can never duplicate */
+  /* re-check the SERVER so a revisit, another device, or a double-tap can never duplicate */
+  const st = await remoteStatus(current.email);
+  if(st && st.confirmed){ markConfirmed(); return; }
   const prev = await dbGet(rk(current.email));
   if(prev && prev.attending){ markConfirmed(); return; }
   const now = new Date().toISOString();
@@ -954,12 +976,19 @@ document.querySelectorAll("#adFilters button").forEach(b=>b.addEventListener("cl
 
 async function collect(){
   const roster = await getRoster();
+  /* pull the authoritative confirmation list from the Google Sheet */
+  const remote = await remoteList();
+  const map = {};
+  if(remote) remote.forEach(x=>{ if(String(x.attendance)==="Attending") map[norm(x.email)] = {
+    attending:true, name:x.name, first:x.first, email:norm(x.email),
+    submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp }; });
   const rows = [];
   for(const e of roster){
     const key = norm(e.email);
-    const rsvp = key ? await dbGet(rk(e.email)) : null;
+    let rsvp = key ? (map[key] || null) : null;
+    if(!rsvp && key && !remote) rsvp = await dbGet(rk(e.email)); /* offline fallback */
     const opened = key ? await dbGet(ok(e.email)) : null;
-    rows.push({...e, rsvp, opened});
+    rows.push({...e, rsvp, opened: opened || (rsvp?{firstOpenedAt:rsvp.submittedAt}:null)});
   }
   return rows;
 }
