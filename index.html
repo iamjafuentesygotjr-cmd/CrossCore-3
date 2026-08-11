@@ -600,7 +600,7 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       <button data-f="none">Not Yet Confirmed</button>
     </div>
     <div class="tblWrap"><table id="adTable">
-      <thead><tr><th>Employee</th><th>ID</th><th>Email</th><th>Status</th><th>Check-In</th><th>Meal</th><th>Confirmed On</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Employee</th><th>ID</th><th>Email</th><th>Status</th><th>QR Email</th><th>Check-In</th><th>Meal</th><th>Confirmed On</th><th>Actions</th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -692,7 +692,7 @@ const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southea
    paste the /exec URL between the quotes below. Every completed RSVP is
    then logged as a row in the Sheet and the employee instantly receives
    a confirmation email.                                               */
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyffVlr1fzHYgplDgOMaXT2EvZtHfJNZRJltJ8cXxtMTrfkmY9MT80bcG2JUDm3OAqhRA/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyakEcuIkIsh8bLbPiVTNlukj8lcmMsJWnNBQxwJTNZUSYCEQEuxhYjXySpv1RzBv5lTQ/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
@@ -1105,7 +1105,7 @@ async function collect(){
   if(remote) remote.forEach(x=>{ if(String(x.attendance)==="Attending") map[norm(x.email)] = {
     attending:true, name:x.name, first:x.first, email:norm(x.email),
     submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp,
-    checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"" }; });
+    checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"", emailSent:x.emailSent||"" }; });
   const rows = [];
   for(const e of roster){
     const key = norm(e.email);
@@ -1131,11 +1131,12 @@ async function renderAdmin(){
     const st = (r.rsvp&&r.rsvp.attending) ? `<span class="pill g">Confirmed 🎉</span>` : `<span class="pill m">Not yet</span>`;
     const ci = (r.rsvp&&r.rsvp.checkedInAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.checkedInAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
     const ml = (r.rsvp&&r.rsvp.mealAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.mealAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
+    const em = (r.rsvp&&r.rsvp.emailSent) ? (String(r.rsvp.emailSent).indexOf("Yes")===0?`<span class="pill g">Sent ✓</span>`:`<span class="pill r" title="${esc(r.rsvp.emailSent)}">Failed</span>`) : `<span class="pill m">—</span>`;
     return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td style="color:var(--sand)">${esc(r.empId||"—")}</td><td style="color:var(--sand)">${esc(r.email)}</td>
-    <td>${st}</td><td>${ci}</td><td>${ml}</td>
+    <td>${st}</td><td>${em}</td><td>${ci}</td><td>${ml}</td>
     <td style="color:var(--sand)">${r.rsvp?new Date(r.rsvp.updatedAt).toLocaleString():"—"}</td>
     <td><div class="rowActs"><button onclick="viewRSVP('${esc(r.email)}')">View</button><button onclick="resetRSVP('${esc(r.email)}')">Reset</button></div></td></tr>`;
-  }).join("") || `<tr><td colspan="8" style="text-align:center;color:var(--sand);padding:2rem">No records match this filter yet.</td></tr>`;
+  }).join("") || `<tr><td colspan="9" style="text-align:center;color:var(--sand);padding:2rem">No records match this filter yet.</td></tr>`;
   /* event-day stats */
   const inN = invited.filter(r=>r.rsvp&&r.rsvp.checkedInAt).length;
   const mealN = invited.filter(r=>r.rsvp&&r.rsvp.mealAt).length;
