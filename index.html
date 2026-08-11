@@ -483,8 +483,12 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       <div class="rv">
         <div class="eyebrow">Your Spot Is Reserved</div>
         <h2 id="rsvpTitle" style="font-size:clamp(1.9rem,6vw,3.1rem);margin-top:.7rem">See You at CrossCore @3?</h2>
-        <p style="color:var(--sand);max-width:46ch;margin:1.2rem auto 0;line-height:1.85">No forms, no questions — your place at the celebration is already confirmed on our list. Just tap below so we know you're as excited as we are.</p>
+        <p id="rsvpLead" style="color:var(--sand);max-width:46ch;margin:1.2rem auto 0;line-height:1.85">No forms, no questions — your place at the celebration is already confirmed on our list. Just tap below so we know you're as excited as we are.</p>
         <button class="btn" id="seeYouBtn" style="margin-top:2.6rem;font-size:1.05rem;padding:1.25rem 3.2rem">See You There! 🎉</button>
+        <div id="confirmedBadge" style="display:none;margin-top:2.4rem">
+          <div style="display:inline-flex;align-items:center;gap:.7rem;background:rgba(120,220,120,.1);border:1px solid rgba(120,220,120,.45);border-radius:999px;padding:1.05rem 2rem;font-size:1.02rem;color:#A8E6A8;font-weight:600;letter-spacing:.02em">✅ Attendance Confirmed — See you there!</div>
+          <p style="color:var(--sand);font-size:.88rem;margin-top:1rem">Your confirmation is safely recorded. Feel free to revisit the invitation anytime.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -753,6 +757,12 @@ async function doLogin(){
   const now = new Date().toISOString();
   await dbSet(ok(emp.email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now });
   personalize(emp);
+  /* returning visitor? show confirmed status instead of the button */
+  alreadyConfirmed = false;
+  const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
+  const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
+  const existing = await dbGet(rk(emp.email));
+  if(existing && existing.attending) markConfirmed();
   startReveal();
 }
 function personalize(emp){
@@ -821,21 +831,35 @@ lb.addEventListener("click", ()=>lb.classList.remove("on"));
 
 /* ============ See You There (one-tap confirmation) ============ */
 const esc = s => String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/* One confirmation per employee: swap the button for a status badge */
+let alreadyConfirmed = false;
+function markConfirmed(){
+  alreadyConfirmed = true;
+  const btn=document.getElementById("seeYouBtn");
+  if(btn) btn.style.display="none";
+  const badge=document.getElementById("confirmedBadge");
+  if(badge) badge.style.display="block";
+  const lead=document.getElementById("rsvpLead");
+  if(lead) lead.textContent="Your attendance is already confirmed — no need to do anything else. Enjoy browsing the invitation, venue, and event details anytime.";
+}
 async function submitSeeYou(){
+  if(alreadyConfirmed) return;
   const btn=document.getElementById("seeYouBtn");
   btn.disabled=true; btn.textContent="Confirming…";
+  /* re-check the backend so a revisit or double-tap can never duplicate */
   const prev = await dbGet(rk(current.email));
+  if(prev && prev.attending){ markConfirmed(); return; }
   const now = new Date().toISOString();
   const record = { attending:true, seeYouThere:true, email:norm(current.email), name:current.display, first:current.first,
-    submittedAt: prev?prev.submittedAt:now, updatedAt: now };
+    submittedAt: now, updatedAt: now };
   await dbSet(rk(current.email), record);
-  /* log to the Google Sheet + trigger the automatic confirmation email */
+  /* log to the Google Sheet + trigger the one-time confirmation email */
   if(SHEETS_WEBAPP_URL){
     try{ fetch(SHEETS_WEBAPP_URL, { method:"POST", mode:"no-cors",
       headers:{ "Content-Type":"text/plain;charset=utf-8" },
       body: JSON.stringify(record) }); }catch(e){}
   }
-  btn.disabled=false; btn.textContent="See You There! 🎉";
+  markConfirmed();
   go("confirmScr");
 }
 document.getElementById("seeYouBtn").addEventListener("click", submitSeeYou);
