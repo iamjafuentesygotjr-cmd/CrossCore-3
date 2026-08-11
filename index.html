@@ -732,6 +732,8 @@ async function remoteList(){
   }catch(e){ return null; }
 }
 const norm = e => (e||"").trim().toLowerCase();
+/* warm up the Google endpoint early so later checks respond fast */
+if(SHEETS_WEBAPP_URL){ try{ fetch(SHEETS_WEBAPP_URL + "?action=status&email=warmup@warmup").catch(()=>{}); }catch(e){} }
 const validEmail = e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 const rk = e => "cc3-rsvp:"+norm(e);
 const ok = e => "cc3-opened:"+norm(e);
@@ -765,25 +767,31 @@ async function doLogin(){
   const email = norm(document.getElementById("emailIn").value);
   err.textContent = "";
   if(!validEmail(email)){ err.textContent = "Please enter a valid email address."; return; }
-  const btn = document.getElementById("loginBtn"); btn.disabled = true; btn.textContent = "Verifying…";
-  const emp = await findEmployee(email);
-  btn.disabled = false; btn.textContent = "Continue with CrossCore Email";
+  const emp = await findEmployee(email); /* local roster check — instant */
   if(!emp || !emp.access){ go("notfound"); return; }
   current = emp;
-  const opened = await dbGet(ok(emp.email));
-  const now = new Date().toISOString();
-  await dbSet(ok(emp.email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now });
   personalize(emp);
-  /* returning visitor? show confirmed status instead of the button */
+  /* reset the confirmation UI for this visitor */
   alreadyConfirmed = false;
   const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
   const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
-  let confirmed = false;
-  const st = await remoteStatus(emp.email);          /* server-side check — works from any device */
-  if(st) confirmed = !!st.confirmed;
-  else { const existing = await dbGet(rk(emp.email)); confirmed = !!(existing && existing.attending); }
-  if(confirmed) markConfirmed();
+  /* start the experience IMMEDIATELY — no waiting on the network */
   startReveal();
+  /* …then quietly, in the background: mark opened + server-side confirmation check.
+     The reveal takes ~7s, so the answer arrives long before the button is reachable,
+     and submitSeeYou() re-checks the server anyway, so one-time stays enforced. */
+  (async ()=>{
+    try{
+      const opened = await dbGet(ok(emp.email));
+      const now = new Date().toISOString();
+      dbSet(ok(emp.email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now });
+    }catch(e){}
+    let confirmed = false;
+    const st = await remoteStatus(emp.email);
+    if(st) confirmed = !!st.confirmed;
+    else { try{ const existing = await dbGet(rk(emp.email)); confirmed = !!(existing && existing.attending); }catch(e){} }
+    if(confirmed && current && norm(current.email)===norm(emp.email)) markConfirmed();
+  })();
 }
 function personalize(emp){
   ["revealName","welName","dearName","confName"].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent = emp.first; });
