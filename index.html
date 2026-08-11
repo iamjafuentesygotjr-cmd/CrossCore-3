@@ -688,6 +688,14 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
    to one shared database that the admin dashboard reads live.          */
 const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southeast1.firebasedatabase.app"
 
+/* GOOGLE SHEET + AUTO CONFIRMATION EMAIL:
+   Follow Part 3 of LAUNCH-GUIDE.md — create a Google Sheet, paste
+   google-apps-script.gs into its Apps Script, deploy as Web App, and
+   paste the /exec URL between the quotes below. Every completed RSVP is
+   then logged as a row in the Sheet and the employee instantly receives
+   a confirmation email.                                               */
+const SHEETS_WEBAPP_URL = "";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
   "ja.crosscore@gmail.com",     // Jose Andres F. Ygot Jr. — COO
@@ -934,8 +942,15 @@ document.getElementById("confirmBtn").addEventListener("click", async ()=>{
 async function saveRSVP(data){
   const prev = await dbGet(rk(current.email));
   const now = new Date().toISOString();
-  await dbSet(rk(current.email), { ...data, email:norm(current.email), name:current.display, first:current.first,
-    submittedAt: prev?prev.submittedAt:now, updatedAt: now });
+  const record = { ...data, email:norm(current.email), name:current.display, first:current.first,
+    submittedAt: prev?prev.submittedAt:now, updatedAt: now };
+  await dbSet(rk(current.email), record);
+  /* log to Google Sheet + trigger the automatic confirmation email */
+  if(SHEETS_WEBAPP_URL){
+    try{ fetch(SHEETS_WEBAPP_URL, { method:"POST", mode:"no-cors",
+      headers:{ "Content-Type":"text/plain;charset=utf-8" },
+      body: JSON.stringify(record) }); }catch(e){}
+  }
 }
 function renderConfirmation(){
   const own = state.transport==="Own Transportation";
