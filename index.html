@@ -8,6 +8,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Figtree:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <style>
 :root{
   --gold:#DA8E05; --amber:#D88D00; --deep:#BD6D00; --hi:#E29509;
@@ -230,6 +232,23 @@ hr.div{border:none;height:1px;width:min(220px,50%);margin:0 auto;background:line
 #finale .fLine{font-family:var(--serif);font-size:clamp(1.9rem,7vw,3.8rem);line-height:1.35;min-height:1.4em}
 #finale .fSub{color:var(--sand);font-size:clamp(1rem,3vw,1.3rem);margin-top:.6rem;font-family:var(--serif)}
 
+/* QR pass + scanner */
+.qrCard{max-width:420px;margin:0 auto;background:linear-gradient(160deg,#F8EFDD,#EAD9B8);border-radius:22px;padding:1.8rem 1.4rem;text-align:center;color:#3a2a0c;box-shadow:0 30px 70px rgba(0,0,0,.5)}
+.qrCard .qk{font-size:.66rem;letter-spacing:.34em;text-transform:uppercase;color:#8c6a2c;font-weight:700}
+.qrCard .qname{font-family:var(--serif);font-size:1.25rem;margin-top:.25rem;color:#241503}
+.qrCard .qid{font-size:.78rem;letter-spacing:.16em;color:#8c6a2c;font-weight:600;margin-top:.15rem}
+.qrBoxWrap{background:#fff;border-radius:16px;padding:14px;display:inline-block;margin:1rem auto;box-shadow:inset 0 0 0 1px rgba(140,106,44,.25)}
+.qrBoxWrap img,.qrBoxWrap canvas{display:block}
+.qrNote{font-size:.8rem;color:#5a4520;line-height:1.6;margin-top:.4rem}
+.qrChips{display:flex;gap:.5rem;justify-content:center;margin-top:.8rem;flex-wrap:wrap}
+.qrChips span{font-size:.7rem;letter-spacing:.08em;border-radius:999px;padding:.3rem .8rem;border:1px solid rgba(140,106,44,.4);color:#5a4520;font-weight:600}
+.qrChips span.done{background:rgba(46,160,67,.15);border-color:rgba(46,160,67,.5);color:#1f6b2d}
+#scanWrap{max-width:520px}
+#scanVideo{width:100%;border-radius:16px;border:1px solid var(--line);background:#000;aspect-ratio:4/3;object-fit:cover}
+.scanRes{background:var(--glass);border:1px solid var(--line);border-radius:18px;padding:1.4rem;margin-top:1rem}
+.scanRes h3{font-family:var(--serif);font-size:1.25rem}
+.scanWarn{background:rgba(240,140,110,.12);border:1px solid rgba(240,140,110,.5);color:#F2A08F;border-radius:12px;padding:.8rem 1rem;font-weight:600;margin-top:.8rem;text-align:center}
+.scanOkMsg{background:rgba(120,220,120,.12);border:1px solid rgba(120,220,120,.5);color:#A8E6A8;border-radius:12px;padding:.8rem 1rem;font-weight:600;margin-top:.8rem;text-align:center}
 /* music controller */
 #musicCtl{position:fixed;right:1.1rem;bottom:1.1rem;z-index:70;display:none;align-items:center;gap:.7rem;background:rgba(24,17,8,.85);border:1px solid var(--line);border-radius:999px;padding:.5rem .6rem;backdrop-filter:blur(12px);box-shadow:0 12px 40px rgba(0,0,0,.5);transition:padding .3s}
 #musicCtl.show{display:flex}
@@ -357,6 +376,20 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
 
 <!-- ================= MAIN ================= -->
 <div class="screen" id="main">
+
+  <section class="block" id="qrTop" style="display:none;padding-top:5rem;padding-bottom:2rem">
+    <div class="wrap rv in" style="text-align:center">
+      <div class="eyebrow" style="margin-bottom:1rem">Your Event Pass</div>
+      <div class="qrCard">
+        <div class="qk">CrossCore @3 · QR Pass</div>
+        <div class="qname" id="qrName">—</div>
+        <div class="qid" id="qrId">Employee ID: —</div>
+        <div class="qrBoxWrap"><div id="qrBox"></div></div>
+        <div class="qrNote">Present this QR at the event for <b>check-in</b> and <b>meal claiming</b>.<br>It's unique to you — please don't share it.</div>
+        <div class="qrChips"><span id="chipIn">Check-in: Pending</span><span id="chipMeal">Meal: Not claimed</span></div>
+      </div>
+    </div>
+  </section>
 
   <section class="block" id="welcome">
     <div class="narrow rv">
@@ -507,7 +540,17 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       <div style="font-size:3rem">🎉</div>
       <h1 style="margin-top:.6rem">You're All Set, <span class="gold" id="confName">Friend</span>!</h1>
       <p class="okp" style="font-size:1.08rem;line-height:1.8;margin-top:1rem">Your attendance is confirmed. We can't wait to celebrate with you. <b class="gold">See you there! 🎉</b></p>
-      <p style="color:var(--sand);font-size:.92rem;margin-top:.4rem">A confirmation email is on its way to your registered CrossCore email.</p>
+      <p style="color:var(--sand);font-size:.92rem;margin-top:.4rem">A confirmation email with your personal QR pass is on its way to your registered CrossCore email.</p>
+      <div id="confQRWrap" style="margin-top:1.4rem;display:none">
+        <div class="qrCard">
+          <div class="qk">Your Event QR Pass</div>
+          <div class="qname" id="confQRName">—</div>
+          <div class="qid" id="confQRId">Employee ID: —</div>
+          <div class="qrBoxWrap"><div id="confQRBox"></div></div>
+          <div class="qrNote">Save a screenshot — you'll present this at check-in and meal claiming.</div>
+        </div>
+      </div>
+      <div id="confQRLoading" style="color:var(--sand);font-size:.85rem;margin-top:1rem">Generating your personal QR pass…</div>
       <div class="seeYou" style="margin-top:1.6rem">August 22–23, 2026 · Laxus Oasis Hot Spring Villa</div>
       <div style="text-align:center;margin-top:1.8rem;display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap">
         <a class="btn ghost" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=Laxus%20Oasis%20Hot%20Spring%20Villa%20Lakewood%20Residential%20Estates%20Los%20Ba%C3%B1os%20Laguna">View Venue Location</a>
@@ -544,6 +587,7 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
   </div>
   <div class="adTabs">
     <button class="on" data-tab="overview">Overview</button>
+    <button data-tab="event">Event Day · QR Scanner</button>
     <button data-tab="access">Invitation Access</button>
   </div>
 
@@ -556,9 +600,26 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       <button data-f="none">Not Yet Confirmed</button>
     </div>
     <div class="tblWrap"><table id="adTable">
-      <thead><tr><th>Employee</th><th>Email</th><th>Invitation Opened</th><th>Status</th><th>Confirmed On</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Employee</th><th>ID</th><th>Email</th><th>Status</th><th>Check-In</th><th>Meal</th><th>Confirmed On</th><th>Actions</th></tr></thead>
       <tbody></tbody>
     </table></div>
+  </div>
+
+  <div id="tab-event" style="display:none">
+    <div class="stats" id="evStats"></div>
+    <div id="scanWrap">
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">
+        <button class="btn" id="scanStartBtn" style="padding:.8rem 1.6rem" onclick="startScanner()">📷 Start Scanner</button>
+        <button class="btn ghost" style="padding:.8rem 1.6rem" onclick="stopScanner()">Stop</button>
+      </div>
+      <video id="scanVideo" muted playsinline style="display:none"></video>
+      <div id="scanHint" style="color:var(--sand);font-size:.85rem;margin-top:.6rem">Start the scanner and point the camera at an employee's QR pass. You can also paste a code manually below.</div>
+      <div style="display:flex;gap:.6rem;margin-top:1rem">
+        <input id="manualToken" placeholder="Or paste/type the QR code text (CC3|…)">
+        <button class="btn ghost" style="padding:.7rem 1.3rem" onclick="lookupManual()">Look up</button>
+      </div>
+      <div id="scanResult"></div>
+    </div>
   </div>
 
   <div id="tab-access" style="display:none">
@@ -744,7 +805,8 @@ async function getRoster(){
   const extra = (await dbGet("cc3-extra")) || [];
   const overrides = (await dbGet("cc3-access")) || {};
   const all = EMPLOYEES.concat(extra).map(e=>({...e}));
-  all.forEach(e=>{ const key=norm(e.email); if(key && overrides.hasOwnProperty(key)) e.access = overrides[key]; });
+  all.forEach((e,i)=>{ e.empId = e.empId || ("CC3-" + String(i+1).padStart(3,"0"));
+    const key=norm(e.email); if(key && overrides.hasOwnProperty(key)) e.access = overrides[key]; });
   return all;
 }
 async function findEmployee(email){
@@ -777,6 +839,9 @@ async function doLogin(){
   alreadyConfirmed = false;
   const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
   const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
+  myPass=null; document.getElementById("qrTop").style.display="none";
+  const cw=document.getElementById("confQRWrap"); if(cw) cw.style.display="none";
+  const cl=document.getElementById("confQRLoading"); if(cl){ cl.style.display="block"; cl.textContent="Generating your personal QR pass…"; }
   /* start the experience IMMEDIATELY — no waiting on the network */
   startReveal();
   /* …then quietly, in the background: mark opened + server-side confirmation check.
@@ -792,7 +857,10 @@ async function doLogin(){
     const st = await remoteStatus(emp.email);
     if(st) confirmed = !!st.confirmed;
     else { try{ const existing = await dbGet(rk(emp.email)); confirmed = !!(existing && existing.attending); }catch(e){} }
-    if(confirmed && current && norm(current.email)===norm(emp.email)) markConfirmed();
+    if(confirmed && current && norm(current.email)===norm(emp.email)){
+      markConfirmed();
+      if(st && st.token) renderMyPass(st);
+    }
   })();
 }
 function personalize(emp){
@@ -861,6 +929,49 @@ lb.addEventListener("click", ()=>lb.classList.remove("on"));
 
 /* ============ See You There (one-tap confirmation) ============ */
 const esc = s => String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+/* ---- personal QR pass ---- */
+let myPass = null; /* {token, empId, name, checkedInAt, mealAt} */
+function drawQR(elId, token){
+  const el = document.getElementById(elId);
+  if(!el || !window.QRCode) return;
+  el.innerHTML = "";
+  new QRCode(el, { text: "CC3|"+token, width: 190, height: 190, correctLevel: QRCode.CorrectLevel.M });
+}
+function renderMyPass(info){
+  if(!info || !info.token) return;
+  myPass = info;
+  const name = info.name || (current?current.display:"");
+  const empId = info.empId || (current?current.empId:"") || "—";
+  /* top-of-page pass */
+  document.getElementById("qrTop").style.display = "block";
+  document.getElementById("qrName").textContent = name;
+  document.getElementById("qrId").textContent = "Employee ID: " + empId;
+  drawQR("qrBox", info.token);
+  const chipIn = document.getElementById("chipIn"), chipMeal = document.getElementById("chipMeal");
+  if(info.checkedInAt){ chipIn.textContent = "Checked in ✓"; chipIn.classList.add("done"); }
+  else { chipIn.textContent = "Check-in: Pending"; chipIn.classList.remove("done"); }
+  if(info.mealAt){ chipMeal.textContent = "Meal claimed ✓"; chipMeal.classList.add("done"); }
+  else { chipMeal.textContent = "Meal: Not claimed"; chipMeal.classList.remove("done"); }
+  /* confirmation-screen pass */
+  const wrap = document.getElementById("confQRWrap");
+  if(wrap){ wrap.style.display = "block";
+    document.getElementById("confQRName").textContent = name;
+    document.getElementById("confQRId").textContent = "Employee ID: " + empId;
+    drawQR("confQRBox", info.token);
+    const ld = document.getElementById("confQRLoading"); if(ld) ld.style.display = "none";
+  }
+}
+async function pollMyPass(tries){
+  for(let i=0;i<(tries||8);i++){
+    const st = await remoteStatus(current.email);
+    if(st && st.confirmed && st.token){ renderMyPass(st); return st; }
+    await new Promise(r=>setTimeout(r, 1300));
+  }
+  const ld = document.getElementById("confQRLoading");
+  if(ld) ld.textContent = "Your QR pass will appear here and in your email shortly — sign in again in a moment if it doesn't.";
+  return null;
+}
+
 /* One confirmation per employee: swap the button for a status badge */
 let alreadyConfirmed = false;
 function markConfirmed(){
@@ -883,7 +994,7 @@ async function submitSeeYou(){
   if(prev && prev.attending){ markConfirmed(); return; }
   const now = new Date().toISOString();
   const record = { attending:true, seeYouThere:true, email:norm(current.email), name:current.display, first:current.first,
-    submittedAt: now, updatedAt: now };
+    empId: current.empId || "", submittedAt: now, updatedAt: now };
   await dbSet(rk(current.email), record);
   /* log to the Google Sheet + trigger the one-time confirmation email */
   if(SHEETS_WEBAPP_URL){
@@ -893,6 +1004,7 @@ async function submitSeeYou(){
   }
   markConfirmed();
   go("confirmScr");
+  pollMyPass(10); /* fetch the server-generated QR token and render the pass */
 }
 document.getElementById("seeYouBtn").addEventListener("click", submitSeeYou);
 
@@ -976,7 +1088,8 @@ async function tryAdmin(){
 }
 document.querySelectorAll(".adTabs button").forEach(b=>b.addEventListener("click", ()=>{
   document.querySelectorAll(".adTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
-  ["overview","access"].forEach(t=>document.getElementById("tab-"+t).style.display = b.dataset.tab===t?"block":"none");
+  ["overview","event","access"].forEach(t=>document.getElementById("tab-"+t).style.display = b.dataset.tab===t?"block":"none");
+  if(b.dataset.tab!=="event") stopScanner();
 }));
 document.getElementById("adSearch").addEventListener("input", e=>{ adminQ=e.target.value.toLowerCase(); renderAdmin(); });
 document.querySelectorAll("#adFilters button").forEach(b=>b.addEventListener("click", ()=>{
@@ -991,7 +1104,8 @@ async function collect(){
   const map = {};
   if(remote) remote.forEach(x=>{ if(String(x.attendance)==="Attending") map[norm(x.email)] = {
     attending:true, name:x.name, first:x.first, email:norm(x.email),
-    submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp }; });
+    submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp,
+    checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"" }; });
   const rows = [];
   for(const e of roster){
     const key = norm(e.email);
@@ -1015,11 +1129,17 @@ async function renderAdmin(){
   if(adminQ) list=list.filter(r=>(r.display+" "+r.email).toLowerCase().includes(adminQ));
   document.querySelector("#adTable tbody").innerHTML = list.map(r=>{
     const st = (r.rsvp&&r.rsvp.attending) ? `<span class="pill g">Confirmed 🎉</span>` : `<span class="pill m">Not yet</span>`;
-    return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td style="color:var(--sand)">${esc(r.email)}</td>
-    <td>${r.opened?`<span class="pill y">Opened</span>`:`<span class="pill m">Not yet</span>`}</td><td>${st}</td>
+    const ci = (r.rsvp&&r.rsvp.checkedInAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.checkedInAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
+    const ml = (r.rsvp&&r.rsvp.mealAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.mealAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
+    return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td style="color:var(--sand)">${esc(r.empId||"—")}</td><td style="color:var(--sand)">${esc(r.email)}</td>
+    <td>${st}</td><td>${ci}</td><td>${ml}</td>
     <td style="color:var(--sand)">${r.rsvp?new Date(r.rsvp.updatedAt).toLocaleString():"—"}</td>
     <td><div class="rowActs"><button onclick="viewRSVP('${esc(r.email)}')">View</button><button onclick="resetRSVP('${esc(r.email)}')">Reset</button></div></td></tr>`;
-  }).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--sand);padding:2rem">No records match this filter yet.</td></tr>`;
+  }).join("") || `<tr><td colspan="8" style="text-align:center;color:var(--sand);padding:2rem">No records match this filter yet.</td></tr>`;
+  /* event-day stats */
+  const inN = invited.filter(r=>r.rsvp&&r.rsvp.checkedInAt).length;
+  const mealN = invited.filter(r=>r.rsvp&&r.rsvp.mealAt).length;
+  evStats.innerHTML = stat("Confirmed",conf.length)+stat("Checked In",inN)+stat("Not Yet Arrived",conf.length-inN)+stat("Meals Claimed",mealN)+stat("Meals Remaining",conf.length-mealN);
   /* access tab */
   const blocked = rows.filter(r=>!r.access).length;
   accessStats.innerHTML = stat("Active & Invited",invited.length)+stat("Invitation Opened",openedN)+stat("Confirmed",conf.length)+stat("Not Yet Confirmed",awaiting)+stat("Access Blocked",blocked);
@@ -1050,6 +1170,96 @@ async function toggleAccess(email,val){
   const o = (await dbGet("cc3-access"))||{}; o[norm(email)]=val;
   await dbSet("cc3-access",o); renderAdmin();
 }
+/* ============ Event-day QR scanner ============ */
+let scanStream=null, scanTimer=null, lastScan="", lastScanAt=0;
+async function startScanner(){
+  const video=document.getElementById("scanVideo");
+  try{
+    scanStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }, audio:false });
+  }catch(e){
+    document.getElementById("scanHint").textContent = "Camera access was blocked. Allow camera permission for this site, or use the manual code box below.";
+    return;
+  }
+  video.style.display="block"; video.srcObject=scanStream; await video.play();
+  document.getElementById("scanHint").textContent = "Point the camera at the employee's QR pass…";
+  const useBD = ("BarcodeDetector" in window);
+  let bd=null; try{ if(useBD) bd = new BarcodeDetector({formats:["qr_code"]}); }catch(e){}
+  const canvas=document.createElement("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
+  clearInterval(scanTimer);
+  scanTimer=setInterval(async ()=>{
+    if(!video.videoWidth) return;
+    let text=null;
+    if(bd){ try{ const codes=await bd.detect(video); if(codes && codes.length) text=codes[0].rawValue; }catch(e){} }
+    else if(window.jsQR){
+      canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+      ctx.drawImage(video,0,0);
+      const d=ctx.getImageData(0,0,canvas.width,canvas.height);
+      const c=jsQR(d.data,d.width,d.height,{inversionAttempts:"dontInvert"});
+      if(c) text=c.data;
+    }
+    if(text) onScan(text);
+  }, 450);
+}
+function stopScanner(){
+  clearInterval(scanTimer); scanTimer=null;
+  if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
+  const v=document.getElementById("scanVideo"); if(v){ v.pause(); v.style.display="none"; }
+}
+function lookupManual(){ const v=document.getElementById("manualToken").value.trim(); if(v) onScan(v); }
+async function onScan(text){
+  const token = String(text).replace(/^CC3\|/,"").trim();
+  const nowT = Date.now();
+  if(token===lastScan && nowT-lastScanAt<3000) return; /* debounce repeats */
+  lastScan=token; lastScanAt=nowT;
+  const res=document.getElementById("scanResult");
+  res.innerHTML = `<div class="scanRes" style="text-align:center;color:var(--sand)">Looking up…</div>`;
+  const j = await evAction("scan", token);
+  renderScan(j, token);
+}
+async function evAction(action, token){
+  try{
+    const r = await fetch(SHEETS_WEBAPP_URL + "?action=" + action + "&token=" + encodeURIComponent(token) + "&key=" + encodeURIComponent(ADMIN_PASSCODE));
+    return await r.json();
+  }catch(e){ return {ok:false, error:"network"}; }
+}
+function renderScan(j, token, notice){
+  const res=document.getElementById("scanResult");
+  if(!j || !j.ok){
+    const msg = j && j.error==="not_found" ? "QR not recognized — this code doesn't match any confirmed employee." : "Couldn't reach the server. Check the connection and try again.";
+    res.innerHTML = `<div class="scanRes"><div class="scanWarn">${msg}</div></div>`;
+    return;
+  }
+  const i=j.info;
+  const t = d => d ? new Date(d).toLocaleString() : null;
+  res.innerHTML = `<div class="scanRes">
+    <h3>${esc(i.name||"—")}</h3>
+    <div style="color:var(--sand);font-size:.85rem;letter-spacing:.12em;margin-top:.2rem">Employee ID: ${esc(i.empId||"—")} · ${esc(i.email||"")}</div>
+    <div class="kv" style="margin-top:1rem">
+      <div class="cell"><div class="k">Invitation</div><div class="v">${i.confirmed?"Confirmed 🎉":"Not confirmed"}</div></div>
+      <div class="cell"><div class="k">Check-In</div><div class="v">${t(i.checkedInAt)||"Not yet"}</div></div>
+      <div class="cell full"><div class="k">Meal</div><div class="v">${t(i.mealAt)||"Not claimed"}</div></div>
+    </div>
+    ${notice||""}
+    <div style="display:flex;gap:.7rem;margin-top:1.2rem;flex-wrap:wrap;justify-content:center">
+      <button class="btn" style="padding:.85rem 1.6rem" ${i.checkedInAt?"disabled":""} onclick="doEv('checkin','${esc(token)}')">✓ Check In Employee</button>
+      <button class="btn" style="padding:.85rem 1.6rem" ${i.mealAt?"disabled":""} onclick="doEv('meal','${esc(token)}')">🍽 Claim Meal</button>
+    </div>
+  </div>`;
+}
+async function doEv(action, token){
+  const j = await evAction(action, token);
+  let notice = "";
+  if(j && j.ok && j.already){
+    notice = `<div class="scanWarn">${action==="checkin"?"⚠ Employee Already Checked In":"⚠ Meal Already Claimed"} — ${new Date(action==="checkin"?j.info.checkedInAt:j.info.mealAt).toLocaleString()}</div>`;
+  } else if(j && j.ok){
+    notice = `<div class="scanOkMsg">${action==="checkin"?"✓ Checked in":"✓ Meal claimed"} — recorded ${new Date().toLocaleTimeString()}</div>`;
+  }
+  renderScan(j, token, notice);
+  renderAdmin(); /* live refresh of dashboard counts */
+}
+/* keep the dashboard live while it's open */
+setInterval(()=>{ const ad=document.getElementById("admin"); if(ad && ad.classList.contains("on")) renderAdmin(); }, 25000);
+
 function openAddInvitee(){ aiErr.textContent=""; document.getElementById("addModal").classList.add("on"); }
 async function createInvitee(){
   const first=aiFirst.value.trim(), last=aiLast.value.trim(), disp=aiDisp.value.trim()||`${first} ${last}`.trim(), email=norm(aiEmail.value);
