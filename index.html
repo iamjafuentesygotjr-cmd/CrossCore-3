@@ -379,13 +379,17 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
 
   <section class="block" id="qrTop" style="display:none;padding-top:5rem;padding-bottom:2rem">
     <div class="wrap rv in" style="text-align:center">
-      <div class="eyebrow" style="margin-bottom:1rem">Your Event Pass</div>
+      <div style="margin-bottom:1.4rem">
+        <div style="display:inline-flex;align-items:center;gap:.6rem;background:rgba(120,220,120,.1);border:1px solid rgba(120,220,120,.45);border-radius:999px;padding:.6rem 1.4rem;font-size:.9rem;color:#A8E6A8;font-weight:600">✓ Attendance Confirmed</div>
+        <h2 class="serif" style="font-size:clamp(1.7rem,5vw,2.5rem);margin-top:1rem">Welcome, <span class="gold" id="qrWelcomeName">—</span></h2>
+        <div class="eyebrow" style="margin-top:.6rem">Your Event QR Code</div>
+      </div>
       <div class="qrCard">
         <div class="qk">CrossCore @3 · QR Pass</div>
         <div class="qname" id="qrName">—</div>
         <div class="qid" id="qrId">Employee ID: —</div>
         <div class="qrBoxWrap"><div id="qrBox"></div></div>
-        <div class="qrNote">Present this QR at the event for <b>check-in</b> and <b>meal claiming</b>.<br>It's unique to you — please don't share it.</div>
+        <div class="qrNote">Please present this QR code to the event organizer for <b>attendance check-in</b> and <b>meal claiming</b>.<br>It's unique to you — please don't share it.</div>
         <div class="qrChips"><span id="chipIn">Check-in: Pending</span><span id="chipMeal">Meal: Not claimed</span></div>
       </div>
     </div>
@@ -778,6 +782,12 @@ async function dbDel(key){
   delete mem[key]; }
 
 /* ---- server-side confirmation checks (Google Sheet via Apps Script) ---- */
+const statusCache = {};
+function prefetchStatus(email){
+  const e = (email||"").trim().toLowerCase();
+  if(!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return;
+  if(!statusCache[e]) statusCache[e] = remoteStatus(e); /* fire early, reuse later */
+}
 async function remoteStatus(email){
   if(!SHEETS_WEBAPP_URL) return null;
   try{
@@ -826,6 +836,12 @@ function go(id){
 /* ============ login ============ */
 document.getElementById("loginBtn").addEventListener("click", doLogin);
 document.getElementById("emailIn").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+/* start the confirmed-check the moment a valid email is typed — before Continue is pressed */
+let pfTimer=null;
+document.getElementById("emailIn").addEventListener("input", e=>{
+  clearTimeout(pfTimer); pfTimer=setTimeout(()=>prefetchStatus(e.target.value), 350);
+});
+document.getElementById("emailIn").addEventListener("blur", e=>prefetchStatus(e.target.value));
 async function doLogin(){
   const err = document.getElementById("loginErr");
   const email = norm(document.getElementById("emailIn").value);
@@ -840,28 +856,51 @@ async function doLogin(){
   const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
   const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
   myPass=null; document.getElementById("qrTop").style.display="none";
+  /* keep only this visitor's cached status */
+  Object.keys(statusCache).forEach(k=>{ if(k!==norm(emp.email)) delete statusCache[k]; });
   const cw=document.getElementById("confQRWrap"); if(cw) cw.style.display="none";
   const cl=document.getElementById("confQRLoading"); if(cl){ cl.style.display="block"; cl.textContent="Generating your personal QR pass…"; }
-  /* start the experience IMMEDIATELY — no waiting on the network */
-  startReveal();
-  /* …then quietly, in the background: mark opened + server-side confirmation check.
-     The reveal takes ~7s, so the answer arrives long before the button is reachable,
-     and submitSeeYou() re-checks the server anyway, so one-time stays enforced. */
-  (async ()=>{
-    try{
+  /* mark "invitation opened" quietly in the background */
+  (async ()=>{ try{
       const opened = await dbGet(ok(emp.email));
       const now = new Date().toISOString();
       dbSet(ok(emp.email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now });
-    }catch(e){}
-    let confirmed = false;
-    const st = await remoteStatus(emp.email);
-    if(st) confirmed = !!st.confirmed;
-    else { try{ const existing = await dbGet(rk(emp.email)); confirmed = !!(existing && existing.attending); }catch(e){} }
-    if(confirmed && current && norm(current.email)===norm(emp.email)){
-      markConfirmed();
-      if(st && st.token) renderMyPass(st);
+  }catch(e){} })();
+
+  /* Quick server check (~2s max). Routing rule:
+     confirmed  → skip the cinematic invitation, land DIRECTLY on the QR page — zero clicks.
+     otherwise  → full cinematic invitation with the Confirm button (QR hidden until confirmed). */
+  const lbtn = document.getElementById("loginBtn");
+  if(lbtn){ lbtn.disabled = true; lbtn.textContent = "Opening…"; }
+  prefetchStatus(emp.email); /* usually already in flight from typing */
+  const statusPromise = statusCache[norm(emp.email)] || remoteStatus(emp.email);
+  const quick = await Promise.race([ statusPromise, new Promise(r=>setTimeout(()=>r("timeout"), 3500)) ]);
+  if(lbtn){ lbtn.disabled = false; lbtn.textContent = "Continue with CrossCore Email"; }
+
+  if(quick && quick !== "timeout" && quick.confirmed){
+    /* RETURNING CONFIRMED EMPLOYEE — recognized instantly, QR first thing on screen */
+    markConfirmed();
+    if(quick.token) renderMyPass(quick);
+    go("main"); revealInit();
+  } else {
+    /* FIRST-TIME (or check pending) — show the invitation experience */
+    startReveal();
+    if(quick === "timeout" || quick === null){
+      /* server was slow — keep waiting in the background. The moment it answers
+         "confirmed", INTERRUPT the envelope and jump straight to the QR screen. */
+      (async ()=>{
+        const st = await (statusCache[norm(emp.email)] || remoteStatus(emp.email));
+        if(!current || norm(current.email)!==norm(emp.email)) return;
+        if(st && st.confirmed){
+          markConfirmed(); if(st.token) renderMyPass(st);
+          const revealOn = document.getElementById("reveal").classList.contains("on");
+          if(revealOn){ go("main"); revealInit(); } /* skip the letter — QR confirmation first */
+        } else if(!st){
+          try{ const existing = await dbGet(rk(emp.email)); if(existing && existing.attending) markConfirmed(); }catch(e){}
+        }
+      })();
     }
-  })();
+  }
 }
 function personalize(emp){
   ["revealName","welName","dearName","confName"].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent = emp.first; });
@@ -944,6 +983,7 @@ function renderMyPass(info){
   const empId = info.empId || (current?current.empId:"") || "—";
   /* top-of-page pass */
   document.getElementById("qrTop").style.display = "block";
+  const wn=document.getElementById("qrWelcomeName"); if(wn) wn.textContent = (current?current.first:info.first) || name;
   document.getElementById("qrName").textContent = name;
   document.getElementById("qrId").textContent = "Employee ID: " + empId;
   drawQR("qrBox", info.token);
