@@ -249,6 +249,23 @@ hr.div{border:none;height:1px;width:min(220px,50%);margin:0 auto;background:line
 .scanRes h3{font-family:var(--serif);font-size:1.25rem}
 .scanWarn{background:rgba(240,140,110,.12);border:1px solid rgba(240,140,110,.5);color:#F2A08F;border-radius:12px;padding:.8rem 1rem;font-weight:600;margin-top:.8rem;text-align:center}
 .scanOkMsg{background:rgba(120,220,120,.12);border:1px solid rgba(120,220,120,.5);color:#A8E6A8;border-radius:12px;padding:.8rem 1rem;font-weight:600;margin-top:.8rem;text-align:center}
+.scanModes{display:flex;gap:.6rem;margin-bottom:1rem;flex-wrap:wrap}
+.modeBtn{flex:1;min-width:150px;padding:1rem;border-radius:14px;border:1px solid var(--line);font-size:.95rem;font-weight:600;color:var(--sand);letter-spacing:.04em}
+.modeBtn.on{background:linear-gradient(135deg,#BD6D00,#DA8E05,#E29509);color:#1b1104;border-color:transparent;box-shadow:0 8px 26px rgba(218,142,5,.4)}
+.scanFrame{position:relative;border-radius:16px;overflow:hidden}
+.scanFrame .aim{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.scanFrame .aim::before{content:"";width:62%;aspect-ratio:1;border:3px solid rgba(226,149,9,.9);border-radius:18px;box-shadow:0 0 0 2000px rgba(0,0,0,.35)}
+.scanOverlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:95;background:rgba(8,5,2,.82);padding:1.4rem}
+.scanOverlay.on{display:flex;animation:fadeUp .2s ease}
+.soBox{max-width:460px;width:100%;border-radius:24px;padding:2.4rem 1.8rem;text-align:center;backdrop-filter:blur(8px)}
+.soBox.good{background:rgba(24,60,28,.92);border:2px solid rgba(120,220,120,.7)}
+.soBox.warn{background:rgba(70,40,14,.94);border:2px solid rgba(226,149,9,.7)}
+.soBox.bad{background:rgba(70,22,14,.94);border:2px solid rgba(240,140,110,.7)}
+.soBox .soBig{font-size:clamp(1.5rem,6vw,2.1rem);font-weight:700;letter-spacing:.05em}
+.soBox.good .soBig{color:#A8E6A8}.soBox.warn .soBig{color:#F0C060}.soBox.bad .soBig{color:#F2A08F}
+.soBox .soName{font-family:var(--serif);font-size:1.35rem;color:var(--ivory);margin-top:1rem}
+.soBox .soId{color:var(--sand);font-size:.85rem;letter-spacing:.14em;margin-top:.3rem}
+.soBox .soTime{color:var(--sand);font-size:.85rem;margin-top:.8rem}
 /* music controller */
 #musicCtl{position:fixed;right:1.1rem;bottom:1.1rem;z-index:70;display:none;align-items:center;gap:.7rem;background:rgba(24,17,8,.85);border:1px solid var(--line);border-radius:999px;padding:.5rem .6rem;backdrop-filter:blur(12px);box-shadow:0 12px 40px rgba(0,0,0,.5);transition:padding .3s}
 #musicCtl.show{display:flex}
@@ -613,17 +630,21 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
   <div id="tab-event" style="display:none">
     <div class="stats" id="evStats"></div>
     <div id="scanWrap">
+      <div class="scanModes">
+        <button class="modeBtn on" id="modeCheckin" onclick="setScanMode('checkin')">🚪 Arrival Check-In</button>
+        <button class="modeBtn" id="modeMeal" onclick="setScanMode('meal')">🍽 Meal Stub</button>
+      </div>
       <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem">
         <button class="btn" id="scanStartBtn" style="padding:.8rem 1.6rem" onclick="startScanner()">📷 Start Scanner</button>
         <button class="btn ghost" style="padding:.8rem 1.6rem" onclick="stopScanner()">Stop</button>
       </div>
-      <video id="scanVideo" muted playsinline style="display:none"></video>
-      <div id="scanHint" style="color:var(--sand);font-size:.85rem;margin-top:.6rem">Start the scanner and point the camera at an employee's QR pass. You can also paste a code manually below.</div>
+      <div class="scanFrame"><video id="scanVideo" muted playsinline style="display:none"></video><div class="aim" id="scanAim" style="display:none"></div></div>
+      <div id="scanHint" style="color:var(--sand);font-size:.85rem;margin-top:.8rem">Pick a mode, start the scanner, and simply show each QR to the camera — it records automatically. Tip: if the camera won't open inside Messenger, tap ⋯ and choose "Open in browser" (Chrome/Safari).</div>
       <div style="display:flex;gap:.6rem;margin-top:1rem">
         <input id="manualToken" placeholder="Or paste/type the QR code text (CC3|…)">
-        <button class="btn ghost" style="padding:.7rem 1.3rem" onclick="lookupManual()">Look up</button>
+        <button class="btn ghost" style="padding:.7rem 1.3rem" onclick="lookupManual()">Process</button>
       </div>
-      <div id="scanResult"></div>
+      <div id="scanResult" style="margin-top:1rem;color:var(--sand);font-size:.9rem"></div>
     </div>
   </div>
 
@@ -661,6 +682,7 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
 <div class="lightbox" id="lightbox"><img id="lbImg" alt=""></div>
 
 <!-- music -->
+<div class="scanOverlay" id="scanOverlay"><div class="soBox" id="soBox"></div></div>
 <div id="musicCtl" class="paused">
   <div class="disc">🎵</div>
   <div class="info"><span class="tt">Inspiring Acoustic</span><span class="st" id="musicState">Paused</span></div>
@@ -1238,114 +1260,109 @@ async function toggleAccess(email,val){
   const o = (await dbGet("cc3-access"))||{}; o[norm(email)]=val;
   await dbSet("cc3-access",o); renderAdmin();
 }
-/* ============ Event-day QR scanner ============ */
-let scanStream=null, scanTimer=null, lastScan="", lastScanAt=0, scanPaused=false;
+/* ============ Event-day QR scanner — express auto mode ============
+   Pick a mode (Arrival or Meal). Any QR the camera sees is processed
+   AUTOMATICALLY: big centered success screen, then instantly ready for
+   the next person. Duplicates show a centered warning instead.        */
+let scanStream=null, scanTimer=null, scanMode="checkin", scanBusy=false;
+const recentScans={}; /* token -> last processed ts (blocks re-fire while QR still in view) */
+
+function setScanMode(m){
+  scanMode = m;
+  document.getElementById("modeCheckin").classList.toggle("on", m==="checkin");
+  document.getElementById("modeMeal").classList.toggle("on", m==="meal");
+  document.getElementById("scanHint").textContent = m==="checkin"
+    ? "ARRIVAL MODE — show each employee's QR to the camera to check them in automatically."
+    : "MEAL MODE — show each employee's QR to the camera to record their meal stub automatically.";
+}
 async function startScanner(){
   const video=document.getElementById("scanVideo");
   try{
-    scanStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }, audio:false });
+    scanStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment", width:{ideal:1280}, height:{ideal:720} }, audio:false });
   }catch(e){
-    document.getElementById("scanHint").textContent = "Camera access was blocked. Allow camera permission for this site, or use the manual code box below.";
+    document.getElementById("scanHint").textContent = "Camera blocked. Allow camera permission — or if you're inside Messenger, tap ⋯ and choose Open in browser, then try again. Manual code entry below always works.";
     return;
   }
-  video.style.display="block"; video.srcObject=scanStream; await video.play();
-  document.getElementById("scanHint").textContent = "Point the camera at the employee's QR pass…";
+  video.style.display="block"; document.getElementById("scanAim").style.display="flex";
+  video.srcObject=scanStream; await video.play();
+  setScanMode(scanMode);
   const useBD = ("BarcodeDetector" in window);
   let bd=null; try{ if(useBD) bd = new BarcodeDetector({formats:["qr_code"]}); }catch(e){}
   const canvas=document.createElement("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
   clearInterval(scanTimer);
   scanTimer=setInterval(async ()=>{
-    if(scanPaused) return; /* locked on a scanned employee — wait for the organizer */
-    if(!video.videoWidth) return;
+    if(scanBusy || !video.videoWidth) return;
     let text=null;
     if(bd){ try{ const codes=await bd.detect(video); if(codes && codes.length) text=codes[0].rawValue; }catch(e){} }
-    else if(window.jsQR){
-      canvas.width=video.videoWidth; canvas.height=video.videoHeight;
-      ctx.drawImage(video,0,0);
-      const d=ctx.getImageData(0,0,canvas.width,canvas.height);
-      const c=jsQR(d.data,d.width,d.height,{inversionAttempts:"dontInvert"});
+    if(!text && window.jsQR){
+      /* crop to the centered aim square + downscale → faster, more reliable detection */
+      const vw=video.videoWidth, vh=video.videoHeight, s=Math.min(vw,vh)*0.72;
+      const sx=(vw-s)/2, sy=(vh-s)/2, out=480;
+      canvas.width=out; canvas.height=out;
+      ctx.drawImage(video, sx, sy, s, s, 0, 0, out, out);
+      const d=ctx.getImageData(0,0,out,out);
+      const c=jsQR(d.data,d.width,d.height,{inversionAttempts:"attemptBoth"});
       if(c) text=c.data;
     }
     if(text) onScan(text);
-  }, 450);
+  }, 280);
 }
 function stopScanner(){
-  scanPaused=false; lastScan="";
-  clearInterval(scanTimer); scanTimer=null;
+  clearInterval(scanTimer); scanTimer=null; scanBusy=false;
   if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
   const v=document.getElementById("scanVideo"); if(v){ v.pause(); v.style.display="none"; }
+  document.getElementById("scanAim").style.display="none";
 }
-function lookupManual(){ const v=document.getElementById("manualToken").value.trim(); if(v) onScan(v); }
+function lookupManual(){ const v=document.getElementById("manualToken").value.trim(); if(v){ onScan(v); document.getElementById("manualToken").value=""; } }
+
 async function onScan(text){
+  if(scanBusy) return;
   const token = String(text).replace(/^CC3\|/,"").trim();
-  if(scanPaused) return;
+  if(!token) return;
   const nowT = Date.now();
-  if(token===lastScan && nowT-lastScanAt<2000) return; /* debounce repeats */
-  lastScan=token; lastScanAt=nowT;
-  scanPaused = true; /* LOCK: one employee at a time — no pass-through */
-  try{ if(navigator.vibrate) navigator.vibrate(80); }catch(e){}
-  document.getElementById("scanHint").textContent = "Employee scanned — confirm the action below, then tap Scan Next.";
-  const res=document.getElementById("scanResult");
-  res.innerHTML = `<div class="scanRes" style="text-align:center;color:var(--sand)">Looking up…</div>`;
-  const j = await evAction("scan", token);
-  renderScan(j, token);
-}
-function scanNext(){
-  scanPaused = false; lastScan = ""; 
-  document.getElementById("scanResult").innerHTML = "";
-  document.getElementById("scanHint").textContent = scanStream ? "Point the camera at the next employee's QR pass…" : "Start the scanner and point the camera at an employee's QR pass.";
-}
-async function evAction(action, token){
-  try{
-    const r = await fetch(SHEETS_WEBAPP_URL + "?action=" + action + "&token=" + encodeURIComponent(token) + "&key=" + encodeURIComponent(ADMIN_PASSCODE));
-    return await r.json();
-  }catch(e){ return {ok:false, error:"network"}; }
-}
-function renderScan(j, token, notice){
-  const res=document.getElementById("scanResult");
-  if(!j || !j.ok){
-    const msg = j && j.error==="not_found" ? "QR not recognized — this code doesn't match any confirmed employee." : "Couldn't reach the server. Check the connection and try again.";
-    res.innerHTML = `<div class="scanRes"><div class="scanWarn">${msg}</div></div>`;
-    return;
-  }
-  const i=j.info;
-  const t = d => d ? new Date(d).toLocaleString() : null;
-  res.innerHTML = `<div class="scanRes">
-    <div class="scanOkMsg" style="margin-top:0;margin-bottom:1rem">✓ QR Successfully Scanned</div>
-    <h3>${esc(i.name||"—")}</h3>
-    <div style="color:var(--sand);font-size:.85rem;letter-spacing:.12em;margin-top:.2rem">Employee ID: ${esc(i.empId||"—")} · ${esc(i.email||"")}</div>
-    <div class="kv" style="margin-top:1rem">
-      <div class="cell"><div class="k">Invitation Status</div><div class="v">${i.confirmed?"Confirmed 🎉":"Not confirmed"}</div></div>
-      <div class="cell"><div class="k">Arrival Status</div><div class="v">${i.checkedInAt?("Arrived ✓ · "+t(i.checkedInAt)):"Not yet arrived"}</div></div>
-      <div class="cell full"><div class="k">Meal Status</div><div class="v">${i.mealAt?("Claimed ✓ · "+t(i.mealAt)):"Not claimed"}</div></div>
-    </div>
-    ${notice||""}
-    <div style="display:flex;gap:.7rem;margin-top:1.2rem;flex-wrap:wrap;justify-content:center">
-      <button class="btn" style="padding:.85rem 1.6rem" ${i.checkedInAt?"disabled":""} onclick="doEv('checkin','${esc(token)}')">${i.checkedInAt?"✓ Arrived":"✓ Confirm Arrival"}</button>
-      <button class="btn" style="padding:.85rem 1.6rem" ${i.mealAt?"disabled":""} onclick="doEv('meal','${esc(token)}')">${i.mealAt?"🍽 Meal Claimed":"🍽 Confirm Meal Stub"}</button>
-    </div>
-    <div style="text-align:center;margin-top:1rem">
-      <button class="btn ghost" style="padding:.7rem 1.6rem" onclick="scanNext()">📷 Scan Next Employee</button>
-    </div>
-  </div>`;
-}
-async function doEv(action, token){
-  const j = await evAction(action, token);
-  let notice = "";
-  if(j && j.ok && j.already){
-    notice = `<div class="scanWarn">${action==="checkin"?"⚠ Already Checked In":"⚠ Meal Already Claimed"} — ${new Date(action==="checkin"?j.info.checkedInAt:j.info.mealAt).toLocaleString()}</div>`;
-  } else if(j && j.ok){
-    notice = `<div class="scanOkMsg" style="font-size:1.05rem;letter-spacing:.06em">${action==="checkin"?"✓ ARRIVAL CONFIRMED":"✓ MEAL STUB CONFIRMED"} — ${new Date().toLocaleTimeString()}</div>`;
-  }
-  renderScan(j, token, notice);
-  /* instant local update — no waiting on the server round-trip */
+  if(recentScans[token] && nowT - recentScans[token] < 5000) return; /* same QR still in view */
+  recentScans[token] = nowT;
+  scanBusy = true;
+  try{ if(navigator.vibrate) navigator.vibrate([60,40,60]); }catch(e){}
+  const j = await evAction(scanMode, token); /* AUTO: records immediately in the selected mode */
+  showScanOverlay(j, scanMode);
+  /* live-update the dashboard */
   if(j && j.ok && j.info && adminRows){
     const row = adminRows.find(r=>norm(r.email)===norm(j.info.email));
     if(row && row.rsvp){ row.rsvp.checkedInAt=j.info.checkedInAt||row.rsvp.checkedInAt; row.rsvp.mealAt=j.info.mealAt||row.rsvp.mealAt; }
     renderAdminUI();
   }
-  refreshAdmin(); /* silent verify against the server */
+  refreshAdmin();
 }
+function showScanOverlay(j, action){
+  const box = document.getElementById("soBox"), ov = document.getElementById("scanOverlay");
+  const t = d => d ? new Date(d).toLocaleTimeString() : "";
+  let cls, big, name="", id="", time="";
+  if(!j || !j.ok){
+    cls="bad"; big = (j && j.error==="not_found") ? "✕ QR NOT RECOGNIZED" : "✕ CONNECTION ERROR — TRY AGAIN";
+  } else {
+    const i=j.info; name=i.name||""; id=i.empId?("Employee ID: "+i.empId):"";
+    if(j.already){
+      cls="warn";
+      big = action==="checkin" ? "⚠ ALREADY CHECKED IN" : "⚠ MEAL ALREADY CLAIMED";
+      time = "Originally recorded " + t(action==="checkin"?i.checkedInAt:i.mealAt);
+    } else {
+      cls="good";
+      big = action==="checkin" ? "✓ CHECKED IN" : "✓ MEAL STUB CONFIRMED";
+      time = "Recorded " + new Date().toLocaleTimeString();
+      document.getElementById("scanResult").textContent = "Last: " + (name||"—") + " — " + (action==="checkin"?"checked in":"meal claimed") + " at " + new Date().toLocaleTimeString();
+    }
+  }
+  box.className = "soBox " + cls;
+  box.innerHTML = `<div class="soBig">${big}</div>` +
+    (name?`<div class="soName">${esc(name)}</div>`:"") +
+    (id?`<div class="soId">${esc(id)}</div>`:"") +
+    (time?`<div class="soTime">${esc(time)}</div>`:"");
+  ov.classList.add("on");
+  setTimeout(()=>{ ov.classList.remove("on"); scanBusy=false; }, 2300); /* auto-close, ready for next */
+}
+document.getElementById("scanOverlay").addEventListener("click", ()=>{ document.getElementById("scanOverlay").classList.remove("on"); scanBusy=false; });
+
 /* keep the dashboard live while it's open */
 setInterval(()=>{ const ad=document.getElementById("admin"); if(ad && ad.classList.contains("on")) refreshAdmin(); }, 10000);
 
