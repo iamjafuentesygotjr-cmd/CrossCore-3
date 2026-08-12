@@ -340,12 +340,20 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       <div class="eyebrow">CrossCore OPC · 3rd Anniversary</div>
       <h1>Your Invitation<br>Awaits</h1>
       <p class="sub">Sign in using your registered CrossCore email to open your personalized CrossCore&nbsp;@3 invitation.</p>
-      <div class="emailrow">
-        <input type="email" id="emailIn" placeholder="name.crosscore@gmail.com" autocomplete="email" inputmode="email">
+      <div id="empLoginBox">
+        <div class="emailrow">
+          <input type="email" id="emailIn" placeholder="name.crosscore@gmail.com" autocomplete="email" inputmode="email">
+        </div>
+        <button class="btn" id="loginBtn">Continue with CrossCore Email</button>
       </div>
-      <button class="btn" id="loginBtn">Continue with CrossCore Email</button>
+      <div id="guestLoginBox" style="display:none">
+        <div class="emailrow"><input id="gName" placeholder="Your full name (as given to the organizers)"></div>
+        <div class="emailrow"><input type="email" id="gEmail" placeholder="Your personal email address" inputmode="email"></div>
+        <button class="btn" id="guestBtn">Continue as Plus-One Guest</button>
+      </div>
       <div id="loginErr"></div>
-      <button class="orgLink" id="orgLink">Organizer access</button>
+      <button class="orgLink" id="guestLink">Plus-One / Guest? Tap here</button>
+      <button class="orgLink" id="orgLink" style="margin-top:.8rem">Organizer access</button>
     </div>
   </div>
 </div>
@@ -620,9 +628,10 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       <button class="on" data-f="all">All</button>
       <button data-f="confirmed">Confirmed</button>
       <button data-f="none">Not Yet Confirmed</button>
+      <button data-f="guests">Plus-One Guests</button>
     </div>
     <div class="tblWrap"><table id="adTable">
-      <thead><tr><th>Employee</th><th>ID</th><th>Email</th><th>Status</th><th>QR Email</th><th>Check-In</th><th>Meal</th><th>Confirmed On</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>ID</th><th>Type</th><th>Email</th><th>Status</th><th>QR Email</th><th>Arrival</th><th>Meal</th><th>Confirmed On</th><th>Actions</th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -719,7 +728,7 @@ const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southea
    paste the /exec URL between the quotes below. Every completed RSVP is
    then logged as a row in the Sheet and the employee instantly receives
    a confirmation email.                                               */
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxSkeAxcSlCkx6L0Sdt_oodaRijzqnC8oKYVAgZFani9gGVBAk7KVupFcgvXdN_Y0khpg/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbylkkP3SEyOLf45tZeuNzfQCFCKpixgxDAJWtVK2Dv8p4KaaHikyq_uUgWHBFPuL9iU9A/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
@@ -729,6 +738,23 @@ const ADMIN_EMAILS = [                        // organizers allowed into the das
 ];
 const EVENT_TS = new Date("2026-08-22T16:00:00+08:00").getTime();
 const YT_ID = "XXmONTtpfDk"; // Inspiring Acoustic Background Music
+
+const GUESTS = [
+  {name:"Yanna Ruth Fernando"},
+  {name:"Mae Ann Bodiongan"},
+  {name:"Marlo Justine Gando"},
+  {name:"Angel Navarro"}
+].map((g,i)=>({ ...g, id:"G-"+String(i+1).padStart(3,"0") }));
+const gKey = s => String(s||"").trim().toLowerCase().replace(/\s+/g," ");
+function findGuest(name){ const k=gKey(name); return GUESTS.find(g=>gKey(g.name)===k) || null; }
+let guestAccessMap = null; /* server-backed guest access (Settings sheet) */
+async function loadGuestAccess(){ if(!SHEETS_WEBAPP_URL) return;
+  try{ const r=await fetch(SHEETS_WEBAPP_URL+"?action=access"); const j=await r.json(); if(j&&j.ok) guestAccessMap=j.access||{}; }catch(e){} }
+loadGuestAccess();
+async function guestStatus(name,email){
+  if(!SHEETS_WEBAPP_URL) return null;
+  try{ const r=await fetch(SHEETS_WEBAPP_URL+"?action=gstatus&name="+encodeURIComponent(name)+"&email="+encodeURIComponent(norm(email)));
+    const j=await r.json(); return (j&&j.ok)?j:null; }catch(e){ return null; } }
 
 const EMPLOYEES = [
   {first:"Jose", display:"Jose Andres F. Ygot Jr.", email:"ja.crosscore@gmail.com", status:"Active", access:true},
@@ -865,6 +891,68 @@ document.getElementById("emailIn").addEventListener("input", e=>{
   clearTimeout(pfTimer); pfTimer=setTimeout(()=>prefetchStatus(e.target.value), 350);
 });
 document.getElementById("emailIn").addEventListener("blur", e=>prefetchStatus(e.target.value));
+/* toggle employee/guest login */
+document.getElementById("guestLink").addEventListener("click", ()=>{
+  const g=document.getElementById("guestLoginBox"), e=document.getElementById("empLoginBox"), l=document.getElementById("guestLink");
+  const showG = g.style.display==="none";
+  g.style.display=showG?"block":"none"; e.style.display=showG?"none":"block";
+  l.textContent = showG ? "CrossCore employee? Tap here" : "Plus-One / Guest? Tap here";
+  document.getElementById("loginErr").textContent="";
+});
+function resetVisitUI(){
+  alreadyConfirmed = false;
+  const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
+  const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
+  myPass=null; document.getElementById("qrTop").style.display="none";
+  const cw=document.getElementById("confQRWrap"); if(cw) cw.style.display="none";
+  const cl=document.getElementById("confQRLoading"); if(cl){ cl.style.display="block"; cl.textContent="Generating your personal QR pass…"; }
+}
+async function enterExperience(statusPromise, btn, btnLabel){
+  if(btn){ btn.disabled=true; btn.textContent="Opening…"; }
+  const quick = await Promise.race([ statusPromise, new Promise(r=>setTimeout(()=>r("timeout"), 3500)) ]);
+  if(btn){ btn.disabled=false; btn.textContent=btnLabel; }
+  if(quick && quick!=="timeout" && quick.nameTaken){
+    document.getElementById("loginErr").textContent = "This guest name is already registered with a different email. Please use the same email you confirmed with, or contact the organizers.";
+    current=null; return;
+  }
+  if(quick && quick!=="timeout" && quick.confirmed){
+    markConfirmed(); if(quick.token) renderMyPass(quick);
+    go("main"); revealInit();
+  } else {
+    startReveal();
+    if(quick==="timeout" || quick===null){
+      (async ()=>{
+        const st = current && current.guest ? await guestStatus(current.display, current.email)
+                                           : await (statusCache[norm(current.email)] || remoteStatus(current.email));
+        if(!current) return;
+        if(st && st.nameTaken){ return; }
+        if(st && st.confirmed){
+          markConfirmed(); if(st.token) renderMyPass(st);
+          if(document.getElementById("reveal").classList.contains("on")){ go("main"); revealInit(); }
+        }
+      })();
+    }
+  }
+}
+document.getElementById("guestBtn").addEventListener("click", doGuestLogin);
+document.getElementById("gEmail").addEventListener("keydown", e=>{ if(e.key==="Enter") doGuestLogin(); });
+async function doGuestLogin(){
+  const err = document.getElementById("loginErr"); err.textContent="";
+  const name = document.getElementById("gName").value;
+  const email = norm(document.getElementById("gEmail").value);
+  const gg = findGuest(name);
+  if(!gg){ err.textContent = "This name isn't on the Plus-One guest list. Please check the spelling or contact the organizers."; return; }
+  if(!validEmail(email)){ err.textContent = "Please enter a valid email address."; return; }
+  if(guestAccessMap && guestAccessMap["guest:"+gKey(gg.name)] === false){ go("notfound"); return; }
+  current = { first: gg.name.split(" ")[0], display: gg.name, email, empId: gg.id, guest:true, access:true };
+  personalize(current);
+  resetVisitUI();
+  Object.keys(statusCache).forEach(k=>delete statusCache[k]);
+  (async ()=>{ try{ const opened = await dbGet(ok(email)); const now=new Date().toISOString();
+      dbSet(ok(email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now }); }catch(e){} })();
+  await enterExperience(guestStatus(gg.name, email), document.getElementById("guestBtn"), "Continue as Plus-One Guest");
+}
+
 async function doLogin(){
   const err = document.getElementById("loginErr");
   const email = norm(document.getElementById("emailIn").value);
@@ -874,56 +962,17 @@ async function doLogin(){
   if(!emp || !emp.access){ go("notfound"); return; }
   current = emp;
   personalize(emp);
-  /* reset the confirmation UI for this visitor */
-  alreadyConfirmed = false;
-  const btnEl=document.getElementById("seeYouBtn"); if(btnEl){ btnEl.style.display=""; btnEl.disabled=false; btnEl.textContent="See You There! 🎉"; }
-  const badgeEl=document.getElementById("confirmedBadge"); if(badgeEl) badgeEl.style.display="none";
-  myPass=null; document.getElementById("qrTop").style.display="none";
-  /* keep only this visitor's cached status */
+  resetVisitUI();
   Object.keys(statusCache).forEach(k=>{ if(k!==norm(emp.email)) delete statusCache[k]; });
-  const cw=document.getElementById("confQRWrap"); if(cw) cw.style.display="none";
-  const cl=document.getElementById("confQRLoading"); if(cl){ cl.style.display="block"; cl.textContent="Generating your personal QR pass…"; }
   /* mark "invitation opened" quietly in the background */
   (async ()=>{ try{
       const opened = await dbGet(ok(emp.email));
       const now = new Date().toISOString();
       dbSet(ok(emp.email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now });
   }catch(e){} })();
-
-  /* Quick server check (~2s max). Routing rule:
-     confirmed  → skip the cinematic invitation, land DIRECTLY on the QR page — zero clicks.
-     otherwise  → full cinematic invitation with the Confirm button (QR hidden until confirmed). */
-  const lbtn = document.getElementById("loginBtn");
-  if(lbtn){ lbtn.disabled = true; lbtn.textContent = "Opening…"; }
   prefetchStatus(emp.email); /* usually already in flight from typing */
-  const statusPromise = statusCache[norm(emp.email)] || remoteStatus(emp.email);
-  const quick = await Promise.race([ statusPromise, new Promise(r=>setTimeout(()=>r("timeout"), 3500)) ]);
-  if(lbtn){ lbtn.disabled = false; lbtn.textContent = "Continue with CrossCore Email"; }
-
-  if(quick && quick !== "timeout" && quick.confirmed){
-    /* RETURNING CONFIRMED EMPLOYEE — recognized instantly, QR first thing on screen */
-    markConfirmed();
-    if(quick.token) renderMyPass(quick);
-    go("main"); revealInit();
-  } else {
-    /* FIRST-TIME (or check pending) — show the invitation experience */
-    startReveal();
-    if(quick === "timeout" || quick === null){
-      /* server was slow — keep waiting in the background. The moment it answers
-         "confirmed", INTERRUPT the envelope and jump straight to the QR screen. */
-      (async ()=>{
-        const st = await (statusCache[norm(emp.email)] || remoteStatus(emp.email));
-        if(!current || norm(current.email)!==norm(emp.email)) return;
-        if(st && st.confirmed){
-          markConfirmed(); if(st.token) renderMyPass(st);
-          const revealOn = document.getElementById("reveal").classList.contains("on");
-          if(revealOn){ go("main"); revealInit(); } /* skip the letter — QR confirmation first */
-        } else if(!st){
-          try{ const existing = await dbGet(rk(emp.email)); if(existing && existing.attending) markConfirmed(); }catch(e){}
-        }
-      })();
-    }
-  }
+  await enterExperience(statusCache[norm(emp.email)] || remoteStatus(emp.email),
+    document.getElementById("loginBtn"), "Continue with CrossCore Email");
 }
 function personalize(emp){
   ["revealName","welName","dearName","confName"].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent = emp.first; });
@@ -1006,9 +1055,10 @@ function renderMyPass(info){
   const empId = info.empId || (current?current.empId:"") || "—";
   /* top-of-page pass */
   document.getElementById("qrTop").style.display = "block";
+  const isGuest = (current && current.guest) || (info.type==="PLUS ONE / GUEST");
   const wn=document.getElementById("qrWelcomeName"); if(wn) wn.textContent = (current?current.first:info.first) || name;
   document.getElementById("qrName").textContent = name;
-  document.getElementById("qrId").textContent = "Employee ID: " + empId;
+  document.getElementById("qrId").textContent = (isGuest ? "Guest ID: " + empId + " · PLUS ONE / GUEST" : "Employee ID: " + empId);
   drawQR("qrBox", info.token);
   const chipIn = document.getElementById("chipIn"), chipMeal = document.getElementById("chipMeal");
   if(info.checkedInAt){ chipIn.textContent = "Checked in ✓"; chipIn.classList.add("done"); }
@@ -1019,14 +1069,14 @@ function renderMyPass(info){
   const wrap = document.getElementById("confQRWrap");
   if(wrap){ wrap.style.display = "block";
     document.getElementById("confQRName").textContent = name;
-    document.getElementById("confQRId").textContent = "Employee ID: " + empId;
+    document.getElementById("confQRId").textContent = (isGuest ? "Guest ID: " + empId + " · PLUS ONE / GUEST" : "Employee ID: " + empId);
     drawQR("confQRBox", info.token);
     const ld = document.getElementById("confQRLoading"); if(ld) ld.style.display = "none";
   }
 }
 async function pollMyPass(tries){
   for(let i=0;i<(tries||8);i++){
-    const st = await remoteStatus(current.email);
+    const st = current && current.guest ? await guestStatus(current.display, current.email) : await remoteStatus(current.email);
     if(st && st.confirmed && st.token){ renderMyPass(st); return st; }
     await new Promise(r=>setTimeout(r, 1300));
   }
@@ -1051,13 +1101,19 @@ async function submitSeeYou(){
   const btn=document.getElementById("seeYouBtn");
   btn.disabled=true; btn.textContent="Confirming…";
   /* re-check the SERVER so a revisit, another device, or a double-tap can never duplicate */
-  const st = await remoteStatus(current.email);
+  const st = current.guest ? await guestStatus(current.display, current.email) : await remoteStatus(current.email);
+  if(st && st.nameTaken){
+    btn.disabled=false; btn.textContent="See You There! 🎉";
+    alert("This guest name was already confirmed with a different email address. Please contact the organizers.");
+    return;
+  }
   if(st && st.confirmed){ markConfirmed(); return; }
   const prev = await dbGet(rk(current.email));
   if(prev && prev.attending){ markConfirmed(); return; }
   const now = new Date().toISOString();
   const record = { attending:true, seeYouThere:true, email:norm(current.email), name:current.display, first:current.first,
-    empId: current.empId || "", submittedAt: now, updatedAt: now };
+    empId: current.empId || "", guest: !!current.guest, type: current.guest ? "PLUS ONE / GUEST" : "EMPLOYEE",
+    submittedAt: now, updatedAt: now };
   await dbSet(rk(current.email), record);
   /* log to the Google Sheet + trigger the one-time confirmation email */
   if(SHEETS_WEBAPP_URL){
@@ -1165,11 +1221,14 @@ let adminRows = null, adminSig = "", adminFetching = false, tokenIndex = {};
 async function buildAdminRows(){
   const roster = await getRoster();
   const remote = await remoteList(); /* the only network call */
-  const map = {};
-  if(remote) remote.forEach(x=>{ if(String(x.attendance)==="Attending") map[norm(x.email)] = {
-    attending:true, name:x.name, first:x.first, email:norm(x.email),
-    submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp,
-    checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"", emailSent:x.emailSent||"", token:x.token||"" }; });
+  const map = {}, gmap = {};
+  if(remote) remote.forEach(x=>{
+    if(String(x.attendance)!=="Attending") return;
+    const rec = { attending:true, name:x.name, first:x.first, email:norm(x.email),
+      submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp,
+      checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"", emailSent:x.emailSent||"", token:x.token||"", type:x.type||"EMPLOYEE" };
+    if(String(x.type)==="PLUS ONE / GUEST") gmap[gKey(x.name)] = rec; else map[norm(x.email)] = rec;
+  });
   const rows = [];
   for(const e of roster){
     const key = norm(e.email);
@@ -1178,6 +1237,13 @@ async function buildAdminRows(){
     let opened = null; try{ opened = key ? await dbGet(ok(e.email)) : null; }catch(err){}
     rows.push({...e, rsvp, opened: opened || (rsvp?{firstOpenedAt:rsvp.submittedAt}:null)});
   }
+  /* plus-one guests */
+  GUESTS.forEach(g=>{
+    const rsvp = gmap[gKey(g.name)] || null;
+    const acc = guestAccessMap ? (guestAccessMap["guest:"+gKey(g.name)] !== false) : true;
+    rows.push({ display:g.name, first:g.name.split(" ")[0], email: rsvp?rsvp.email:"", empId:g.id,
+      status:"Guest", access:acc, guest:true, rsvp, opened: rsvp?{firstOpenedAt:rsvp.submittedAt}:null });
+  });
   /* instant-recognition index: token → employee (lets the scanner show the
      confirmation screen the moment the camera sees a QR, before the server replies) */
   tokenIndex = {};
@@ -1191,6 +1257,7 @@ function stampLive(ok){
 }
 async function refreshAdmin(){
   if(adminFetching) return; adminFetching = true;
+  loadGuestAccess(); /* keep guest access toggles current */
   try{
     const {rows, sig} = await buildAdminRows();
     const changed = (sig !== adminSig) || !adminRows;
@@ -1209,21 +1276,24 @@ function renderAdminUI(){
   const openedN = invited.filter(r=>r.opened).length;
   const conf = invited.filter(r=>r.rsvp&&r.rsvp.attending);
   const awaiting = invited.length - conf.length;
-  statsRow.innerHTML = stat("Total Invited",invited.length)+stat("Invitations Opened",openedN)+stat("Confirmed — See You There 🎉",conf.length)+stat("Not Yet Confirmed",awaiting);
+  const gAll = invited.filter(r=>r.guest), gConf = gAll.filter(r=>r.rsvp&&r.rsvp.attending);
+  statsRow.innerHTML = stat("Total Invited",invited.length)+stat("Invitations Opened",openedN)+stat("Confirmed — See You There 🎉",conf.length)+stat("Not Yet Confirmed",awaiting)+stat("Plus-One Guests", gConf.length+" / "+gAll.length);
   let list = invited;
   if(adminFilter==="confirmed") list=conf;
   else if(adminFilter==="none") list=invited.filter(r=>!(r.rsvp&&r.rsvp.attending));
+  else if(adminFilter==="guests") list=invited.filter(r=>r.guest);
   if(adminQ) list=list.filter(r=>(r.display+" "+r.email).toLowerCase().includes(adminQ));
   document.querySelector("#adTable tbody").innerHTML = list.map(r=>{
     const st = (r.rsvp&&r.rsvp.attending) ? `<span class="pill g">Confirmed 🎉</span>` : `<span class="pill m">Not yet</span>`;
     const em = (r.rsvp&&r.rsvp.emailSent) ? (String(r.rsvp.emailSent).indexOf("Yes")===0?`<span class="pill g">Sent ✓</span>`:`<span class="pill r" title="${esc(r.rsvp.emailSent)}">Failed</span>`) : `<span class="pill m">—</span>`;
     const ci = (r.rsvp&&r.rsvp.checkedInAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.checkedInAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
     const ml = (r.rsvp&&r.rsvp.mealAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.mealAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
-    return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td style="color:var(--sand)">${esc(r.empId||"—")}</td><td style="color:var(--sand)">${esc(r.email)}</td>
+    const ty = r.guest ? `<span class="pill y">PLUS ONE / GUEST</span>` : `<span class="pill m">Employee</span>`;
+    return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td style="color:var(--sand)">${esc(r.empId||"—")}</td><td>${ty}</td><td style="color:var(--sand)">${esc(r.email)||"—"}</td>
     <td>${st}</td><td>${em}</td><td>${ci}</td><td>${ml}</td>
     <td style="color:var(--sand)">${r.rsvp?new Date(r.rsvp.updatedAt).toLocaleString():"—"}</td>
-    <td><div class="rowActs"><button onclick="viewRSVP('${esc(r.email)}')">View</button><button onclick="resetRSVP('${esc(r.email)}')">Reset</button></div></td></tr>`;
-  }).join("") || `<tr><td colspan="9" style="text-align:center;color:var(--sand);padding:2rem">No records match this filter yet.</td></tr>`;
+    <td><div class="rowActs"><button onclick="viewRSVP('${esc(r.email||r.display)}')">View</button>${r.email?`<button onclick="resetRSVP('${esc(r.email)}')">Reset</button>`:""}</div></td></tr>`;
+  }).join("") || `<tr><td colspan="10" style="text-align:center;color:var(--sand);padding:2rem">No records match this filter yet.</td></tr>`;
   /* event-day stats */
   const inN = invited.filter(r=>r.rsvp&&r.rsvp.checkedInAt).length;
   const mealN = invited.filter(r=>r.rsvp&&r.rsvp.mealAt).length;
@@ -1233,21 +1303,23 @@ function renderAdminUI(){
   accessStats.innerHTML = stat("Active & Invited",invited.length)+stat("Invitation Opened",openedN)+stat("Confirmed",conf.length)+stat("Not Yet Confirmed",awaiting)+stat("Access Blocked",blocked);
   document.querySelector("#accessTable tbody").innerHTML = rows.map(r=>{
     const acc = r.access?`<span class="pill g">Invited</span>`:`<span class="pill r">Blocked</span>`;
-    const act = r.email ? `<button onclick="toggleAccess('${esc(r.email)}',${!r.access})">${r.access?"Disable":"Enable"} Invitation</button>` : `<span style="color:var(--mute);font-size:.78rem">Add email to enable</span>`;
-    return `<tr><td>${esc(r.display)}</td><td style="color:var(--sand)">${esc(r.email)||"—"}</td><td>${esc(r.status)}</td><td>${acc}</td>
+    const act = r.guest
+      ? `<button onclick="toggleGuestAccess('${esc(gKey(r.display))}',${!r.access})">${r.access?"Disable":"Enable"} Guest Access</button>`
+      : (r.email ? `<button onclick="toggleAccess('${esc(r.email)}',${!r.access})">${r.access?"Disable":"Enable"} Invitation</button>` : `<span style="color:var(--mute);font-size:.78rem">Add email to enable</span>`);
+    return `<tr><td>${esc(r.display)}${r.guest?' <span class="pill y" style="margin-left:.4rem">GUEST</span>':''}</td><td style="color:var(--sand)">${esc(r.email)||"—"}</td><td>${esc(r.status)}</td><td>${acc}</td>
     <td>${r.opened?"Yes":"No"}</td><td>${(r.rsvp&&r.rsvp.attending)?"Confirmed 🎉":"—"}</td><td><div class="rowActs">${act}</div></td></tr>`;
   }).join("");
 }
 const stat = (k,n)=>`<div class="stat"><div class="k">${k}</div><div class="n">${n}</div></div>`;
 async function viewRSVP(email){
   const rows = await collect();
-  const rec = rows.find(r=>norm(r.email)===norm(email));
+  const rec = rows.find(r=>(r.email && norm(r.email)===norm(email)) || gKey(r.display)===gKey(email));
   const r = rec ? rec.rsvp : null;
   const box = document.getElementById("viewBox");
   if(!r){ box.innerHTML=`<h3>Not yet confirmed</h3><p style="color:var(--sand)">This employee hasn't tapped "See You There!" yet.</p><div class="stepNav" style="justify-content:center"><button class="btn ghost" onclick="closeModal('viewModal')">Close</button></div>`; }
   else {
     const t=d=>d?new Date(d).toLocaleString():"—";
-    const cells=[["Name",r.name||rec.display],["Employee ID",rec.empId||"—"],["Email",r.email],["Status","Confirmed — See You There 🎉"],["QR Email",r.emailSent||"—"],["Checked In",t(r.checkedInAt)],["Meal Claimed",t(r.mealAt)],["First Confirmed",t(r.submittedAt)]];
+    const cells=[["Name",r.name||rec.display],["Type",rec.guest?"PLUS ONE / GUEST":"Employee"],["ID",rec.empId||"—"],["Email",r.email],["Status","Confirmed — See You There 🎉"],["QR Email",r.emailSent||"—"],["Checked In",t(r.checkedInAt)],["Meal Claimed",t(r.mealAt)],["First Confirmed",t(r.submittedAt)]];
     box.innerHTML=`<h3>Confirmation · ${esc(r.first||rec.first)}</h3><div class="kv">${cells.map(c=>`<div class="cell"><div class="k">${c[0]}</div><div class="v" style="font-size:.95rem">${esc(c[1])}</div></div>`).join("")}</div>
     <div class="stepNav" style="justify-content:center"><button class="btn ghost" onclick="closeModal('viewModal')">Close</button></div>`;
   }
@@ -1258,6 +1330,12 @@ async function resetRSVP(email){
   try{ await fetch(SHEETS_WEBAPP_URL + "?action=reset&email=" + encodeURIComponent(norm(email)) + "&key=" + encodeURIComponent(ADMIN_PASSCODE)); }catch(e){}
   try{ await dbDel(rk(email)); }catch(e){}
   if(adminRows){ const row=adminRows.find(r=>norm(r.email)===norm(email)); if(row) row.rsvp=null; renderAdminUI(); }
+  refreshAdmin();
+}
+async function toggleGuestAccess(gkey,val){
+  try{ const r=await fetch(SHEETS_WEBAPP_URL+"?action=setaccess&id="+encodeURIComponent("guest:"+gkey)+"&val="+val+"&key="+encodeURIComponent(ADMIN_PASSCODE));
+    const j=await r.json(); if(j&&j.ok) guestAccessMap=j.access||guestAccessMap; }catch(e){}
+  if(adminRows){ const row=adminRows.find(r=>r.guest&&gKey(r.display)===gkey); if(row) row.access=val; renderAdminUI(); }
   refreshAdmin();
 }
 async function toggleAccess(email,val){
@@ -1333,13 +1411,14 @@ async function onScan(text){
   /* ===== PHASE 1 — INSTANT: the moment the camera sees the QR ===== */
   const local = tokenIndex[token] || null;
   if(local && local.rsvp){
+    const gtag = local.guest ? " · PLUS ONE / GUEST" : "";
     const alreadyLocal = scanMode==="checkin" ? local.rsvp.checkedInAt : local.rsvp.mealAt;
     if(alreadyLocal){
       paintOverlay("warn", scanMode==="checkin"?"⚠ ALREADY CHECKED IN":"⚠ MEAL ALREADY CLAIMED",
-        local.display, local.empId, "Originally recorded " + new Date(alreadyLocal).toLocaleTimeString());
+        local.display, local.empId + gtag, "Originally recorded " + new Date(alreadyLocal).toLocaleTimeString());
     } else {
       paintOverlay("good", scanMode==="checkin"?"✓ CHECKED IN":"✓ MEAL STUB CONFIRMED",
-        local.display, local.empId, "Recorded " + new Date().toLocaleTimeString());
+        local.display, local.empId + gtag, "Recorded " + new Date().toLocaleTimeString());
       /* optimistic live dashboard update */
       if(scanMode==="checkin") local.rsvp.checkedInAt = new Date().toISOString(); else local.rsvp.mealAt = new Date().toISOString();
       renderAdminUI();
@@ -1354,13 +1433,13 @@ async function onScan(text){
   if(!j || !j.ok){
     paintOverlay("bad", (j && j.error==="not_found") ? "✕ QR NOT RECOGNIZED" : "✕ CONNECTION ERROR — TRY AGAIN", "", "", "");
   } else {
-    const i=j.info;
+    const i=j.info; const gtag2 = (i.type==="PLUS ONE / GUEST") ? " · PLUS ONE / GUEST" : "";
     if(j.already && !(local && ((scanMode==="checkin"&&null) )) ){
       paintOverlay("warn", scanMode==="checkin"?"⚠ ALREADY CHECKED IN":"⚠ MEAL ALREADY CLAIMED",
-        i.name, i.empId, "Originally recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
+        i.name, i.empId + gtag2, "Originally recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
     } else if(!j.already){
       paintOverlay("good", scanMode==="checkin"?"✓ CHECKED IN":"✓ MEAL STUB CONFIRMED",
-        i.name, i.empId, "Recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
+        i.name, i.empId + gtag2, "Recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
       document.getElementById("scanResult").textContent = "Last: " + (i.name||"—") + " — " + (scanMode==="checkin"?"checked in":"meal claimed");
     }
     /* sync cache with the server's truth */
@@ -1403,8 +1482,8 @@ async function createInvitee(){
 }
 async function exportCSV(){
   const rows = await collect();
-  const csv = "Employee,Email,Employment,Invitation Opened,Status,First Confirmed,Last Updated\n" +
-    rows.filter(r=>r.access).map(r=>{const v=r.rsvp||{};return csvRow([r.display,r.email,r.status,r.opened?"Yes":"No",(v.attending?"Confirmed":"Not yet"),v.submittedAt||"",v.updatedAt||""]);}).join("\n");
+  const csv = "Name,ID,Type,Email,Invitation Opened,Status,QR Email,Arrival Time,Meal Time,First Confirmed,Last Updated\n" +
+    rows.filter(r=>r.access).map(r=>{const v=r.rsvp||{};return csvRow([r.display,r.empId||"",r.guest?"PLUS ONE / GUEST":"EMPLOYEE",r.email,r.opened?"Yes":"No",(v.attending?"Confirmed":"Not yet"),v.emailSent||"",v.checkedInAt||"",v.mealAt||"",v.submittedAt||"",v.updatedAt||""]);}).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="crosscore3-confirmations.csv"; a.click();
 }
