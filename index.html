@@ -1311,17 +1311,18 @@ function renderScan(j, token, notice){
   const i=j.info;
   const t = d => d ? new Date(d).toLocaleString() : null;
   res.innerHTML = `<div class="scanRes">
+    <div class="scanOkMsg" style="margin-top:0;margin-bottom:1rem">✓ QR Successfully Scanned</div>
     <h3>${esc(i.name||"—")}</h3>
     <div style="color:var(--sand);font-size:.85rem;letter-spacing:.12em;margin-top:.2rem">Employee ID: ${esc(i.empId||"—")} · ${esc(i.email||"")}</div>
     <div class="kv" style="margin-top:1rem">
-      <div class="cell"><div class="k">Invitation</div><div class="v">${i.confirmed?"Confirmed 🎉":"Not confirmed"}</div></div>
-      <div class="cell"><div class="k">Check-In</div><div class="v">${t(i.checkedInAt)||"Not yet"}</div></div>
-      <div class="cell full"><div class="k">Meal</div><div class="v">${t(i.mealAt)||"Not claimed"}</div></div>
+      <div class="cell"><div class="k">Invitation Status</div><div class="v">${i.confirmed?"Confirmed 🎉":"Not confirmed"}</div></div>
+      <div class="cell"><div class="k">Arrival Status</div><div class="v">${i.checkedInAt?("Arrived ✓ · "+t(i.checkedInAt)):"Not yet arrived"}</div></div>
+      <div class="cell full"><div class="k">Meal Status</div><div class="v">${i.mealAt?("Claimed ✓ · "+t(i.mealAt)):"Not claimed"}</div></div>
     </div>
     ${notice||""}
     <div style="display:flex;gap:.7rem;margin-top:1.2rem;flex-wrap:wrap;justify-content:center">
-      <button class="btn" style="padding:.85rem 1.6rem" ${i.checkedInAt?"disabled":""} onclick="doEv('checkin','${esc(token)}')">${i.checkedInAt?"✓ Checked In":"✓ Confirm Check-In"}</button>
-      <button class="btn" style="padding:.85rem 1.6rem" ${i.mealAt?"disabled":""} onclick="doEv('meal','${esc(token)}')">${i.mealAt?"🍽 Meal Claimed":"🍽 Confirm Meal Claim"}</button>
+      <button class="btn" style="padding:.85rem 1.6rem" ${i.checkedInAt?"disabled":""} onclick="doEv('checkin','${esc(token)}')">${i.checkedInAt?"✓ Arrived":"✓ Confirm Arrival"}</button>
+      <button class="btn" style="padding:.85rem 1.6rem" ${i.mealAt?"disabled":""} onclick="doEv('meal','${esc(token)}')">${i.mealAt?"🍽 Meal Claimed":"🍽 Confirm Meal Stub"}</button>
     </div>
     <div style="text-align:center;margin-top:1rem">
       <button class="btn ghost" style="padding:.7rem 1.6rem" onclick="scanNext()">📷 Scan Next Employee</button>
@@ -1332,9 +1333,9 @@ async function doEv(action, token){
   const j = await evAction(action, token);
   let notice = "";
   if(j && j.ok && j.already){
-    notice = `<div class="scanWarn">${action==="checkin"?"⚠ Employee Already Checked In":"⚠ Meal Already Claimed"} — ${new Date(action==="checkin"?j.info.checkedInAt:j.info.mealAt).toLocaleString()}</div>`;
+    notice = `<div class="scanWarn">${action==="checkin"?"⚠ Already Checked In":"⚠ Meal Already Claimed"} — ${new Date(action==="checkin"?j.info.checkedInAt:j.info.mealAt).toLocaleString()}</div>`;
   } else if(j && j.ok){
-    notice = `<div class="scanOkMsg">${action==="checkin"?"✓ Checked in":"✓ Meal claimed"} — recorded ${new Date().toLocaleTimeString()}</div>`;
+    notice = `<div class="scanOkMsg" style="font-size:1.05rem;letter-spacing:.06em">${action==="checkin"?"✓ ARRIVAL CONFIRMED":"✓ MEAL STUB CONFIRMED"} — ${new Date().toLocaleTimeString()}</div>`;
   }
   renderScan(j, token, notice);
   /* instant local update — no waiting on the server round-trip */
