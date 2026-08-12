@@ -1239,7 +1239,7 @@ async function toggleAccess(email,val){
   await dbSet("cc3-access",o); renderAdmin();
 }
 /* ============ Event-day QR scanner ============ */
-let scanStream=null, scanTimer=null, lastScan="", lastScanAt=0;
+let scanStream=null, scanTimer=null, lastScan="", lastScanAt=0, scanPaused=false;
 async function startScanner(){
   const video=document.getElementById("scanVideo");
   try{
@@ -1255,6 +1255,7 @@ async function startScanner(){
   const canvas=document.createElement("canvas"), ctx=canvas.getContext("2d",{willReadFrequently:true});
   clearInterval(scanTimer);
   scanTimer=setInterval(async ()=>{
+    if(scanPaused) return; /* locked on a scanned employee — wait for the organizer */
     if(!video.videoWidth) return;
     let text=null;
     if(bd){ try{ const codes=await bd.detect(video); if(codes && codes.length) text=codes[0].rawValue; }catch(e){} }
@@ -1269,6 +1270,7 @@ async function startScanner(){
   }, 450);
 }
 function stopScanner(){
+  scanPaused=false; lastScan="";
   clearInterval(scanTimer); scanTimer=null;
   if(scanStream){ scanStream.getTracks().forEach(t=>t.stop()); scanStream=null; }
   const v=document.getElementById("scanVideo"); if(v){ v.pause(); v.style.display="none"; }
@@ -1276,13 +1278,22 @@ function stopScanner(){
 function lookupManual(){ const v=document.getElementById("manualToken").value.trim(); if(v) onScan(v); }
 async function onScan(text){
   const token = String(text).replace(/^CC3\|/,"").trim();
+  if(scanPaused) return;
   const nowT = Date.now();
-  if(token===lastScan && nowT-lastScanAt<3000) return; /* debounce repeats */
+  if(token===lastScan && nowT-lastScanAt<2000) return; /* debounce repeats */
   lastScan=token; lastScanAt=nowT;
+  scanPaused = true; /* LOCK: one employee at a time — no pass-through */
+  try{ if(navigator.vibrate) navigator.vibrate(80); }catch(e){}
+  document.getElementById("scanHint").textContent = "Employee scanned — confirm the action below, then tap Scan Next.";
   const res=document.getElementById("scanResult");
   res.innerHTML = `<div class="scanRes" style="text-align:center;color:var(--sand)">Looking up…</div>`;
   const j = await evAction("scan", token);
   renderScan(j, token);
+}
+function scanNext(){
+  scanPaused = false; lastScan = ""; 
+  document.getElementById("scanResult").innerHTML = "";
+  document.getElementById("scanHint").textContent = scanStream ? "Point the camera at the next employee's QR pass…" : "Start the scanner and point the camera at an employee's QR pass.";
 }
 async function evAction(action, token){
   try{
@@ -1309,8 +1320,11 @@ function renderScan(j, token, notice){
     </div>
     ${notice||""}
     <div style="display:flex;gap:.7rem;margin-top:1.2rem;flex-wrap:wrap;justify-content:center">
-      <button class="btn" style="padding:.85rem 1.6rem" ${i.checkedInAt?"disabled":""} onclick="doEv('checkin','${esc(token)}')">✓ Check In Employee</button>
-      <button class="btn" style="padding:.85rem 1.6rem" ${i.mealAt?"disabled":""} onclick="doEv('meal','${esc(token)}')">🍽 Claim Meal</button>
+      <button class="btn" style="padding:.85rem 1.6rem" ${i.checkedInAt?"disabled":""} onclick="doEv('checkin','${esc(token)}')">${i.checkedInAt?"✓ Checked In":"✓ Confirm Check-In"}</button>
+      <button class="btn" style="padding:.85rem 1.6rem" ${i.mealAt?"disabled":""} onclick="doEv('meal','${esc(token)}')">${i.mealAt?"🍽 Meal Claimed":"🍽 Confirm Meal Claim"}</button>
+    </div>
+    <div style="text-align:center;margin-top:1rem">
+      <button class="btn ghost" style="padding:.7rem 1.6rem" onclick="scanNext()">📷 Scan Next Employee</button>
     </div>
   </div>`;
 }
