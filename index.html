@@ -618,6 +618,7 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
   <div class="adTabs">
     <button class="on" data-tab="overview">Overview</button>
     <button data-tab="event">Event Day · QR Scanner</button>
+    <button data-tab="remind">Reminders</button>
     <button data-tab="access">Invitation Access</button>
   </div>
 
@@ -655,6 +656,25 @@ footer.credit .fTheme{font-family:var(--serif);font-size:1.15rem;color:var(--san
       </div>
       <div id="scanResult" style="margin-top:1rem;color:var(--sand);font-size:.9rem"></div>
     </div>
+  </div>
+
+  <div id="tab-remind" style="display:none">
+    <div class="stats" id="remStats"></div>
+    <div style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem">
+      <button class="btn" style="padding:.8rem 1.6rem" onclick="sendAllReminders(this)">📣 Remind All Pending</button>
+      <button class="btn ghost" style="padding:.8rem 1.6rem" onclick="sendStage('sendprep',this)">🎉 Send 3-Day Prep + QR Now</button>
+      <button class="btn ghost" style="padding:.8rem 1.6rem" onclick="sendStage('sendeventday',this)">🌅 Send Event-Day Message Now</button>
+    </div>
+    <p style="color:var(--sand);font-size:.82rem;line-height:1.6;margin-bottom:1.2rem">Fully automatic schedule (daily 8 AM): <b style="color:var(--ivory)">Aug 17–21</b> — personalized "Hi [Name]! 👋" reminders to anyone still pending · <b style="color:var(--ivory)">Aug 19</b> — "CrossCore @3 is almost here! 🎉" with the dress code and each person's own QR pass · <b style="color:var(--ivory)">Aug 22, 8 AM</b> — "Good morning, [Name]! 🎉 Today is the day!" with their QR. Everyone is addressed by name with their own unique QR — never a generic or shared one — and each send stops automatically once its purpose is met.</p>
+    <div class="tblWrap"><table id="remTable">
+      <thead><tr><th>Name</th><th>Type</th><th>RSVP Status</th><th>Reminder Sent</th><th>Last Reminder</th><th>Action</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="adSection"><h2>Notification Log</h2>
+    <div class="tblWrap"><table id="notifLogTable">
+      <thead><tr><th>Recipient</th><th>Attendee Type</th><th>Notification</th><th>Sent At</th><th>Mode</th><th>Email Status</th></tr></thead>
+      <tbody></tbody>
+    </table></div></div>
   </div>
 
   <div id="tab-access" style="display:none">
@@ -728,7 +748,7 @@ const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southea
    paste the /exec URL between the quotes below. Every completed RSVP is
    then logged as a row in the Sheet and the employee instantly receives
    a confirmation email.                                               */
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbylkkP3SEyOLf45tZeuNzfQCFCKpixgxDAJWtVK2Dv8p4KaaHikyq_uUgWHBFPuL9iU9A/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbygPdn7-TTGvUVUVFGrKxgYLs7dR5Sd8hGEfslX9B4k1n3YvhZtaUddvuzmqSJ94Rtzvw/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
@@ -1207,7 +1227,7 @@ async function tryAdmin(){
 }
 document.querySelectorAll(".adTabs button").forEach(b=>b.addEventListener("click", ()=>{
   document.querySelectorAll(".adTabs button").forEach(x=>x.classList.remove("on")); b.classList.add("on");
-  ["overview","event","access"].forEach(t=>document.getElementById("tab-"+t).style.display = b.dataset.tab===t?"block":"none");
+  ["overview","event","remind","access"].forEach(t=>document.getElementById("tab-"+t).style.display = b.dataset.tab===t?"block":"none");
   if(b.dataset.tab!=="event") stopScanner();
 }));
 document.getElementById("adSearch").addEventListener("input", e=>{ adminQ=e.target.value.toLowerCase(); renderAdminUI(); });
@@ -1218,6 +1238,12 @@ document.querySelectorAll("#adFilters button").forEach(b=>b.addEventListener("cl
 
 /* ============ Admin data engine — instant UI, silent background sync ============ */
 let adminRows = null, adminSig = "", adminFetching = false, tokenIndex = {};
+let remindMap = {}, notifLog = []; /* reminder map + full notification log */
+async function loadReminders(){
+  if(!SHEETS_WEBAPP_URL) return;
+  try{ const r=await fetch(SHEETS_WEBAPP_URL+"?action=reminders&key="+encodeURIComponent(ADMIN_PASSCODE));
+    const j=await r.json(); if(j&&j.ok){ remindMap=j.reminders||{}; notifLog=j.log||[]; } }catch(e){}
+}
 async function buildAdminRows(){
   const roster = await getRoster();
   const remote = await remoteList(); /* the only network call */
@@ -1258,6 +1284,7 @@ function stampLive(ok){
 async function refreshAdmin(){
   if(adminFetching) return; adminFetching = true;
   loadGuestAccess(); /* keep guest access toggles current */
+  loadReminders();   /* keep reminder log current */
   try{
     const {rows, sig} = await buildAdminRows();
     const changed = (sig !== adminSig) || !adminRows;
@@ -1298,6 +1325,30 @@ function renderAdminUI(){
   const inN = invited.filter(r=>r.rsvp&&r.rsvp.checkedInAt).length;
   const mealN = invited.filter(r=>r.rsvp&&r.rsvp.mealAt).length;
   evStats.innerHTML = stat("Confirmed",conf.length)+stat("Checked In",inN)+stat("Not Yet Arrived",conf.length-inN)+stat("Meals Claimed",mealN)+stat("Meals Remaining",conf.length-mealN);
+  /* reminders tab */
+  const pending = invited.filter(r=>!(r.rsvp&&r.rsvp.attending));
+  const remindedN = pending.filter(r=>r.email && remindMap[norm(r.email)]).length;
+  remStats.innerHTML = stat("Still Pending",pending.length)+stat("Reminded",remindedN)+stat("Not Yet Reminded",pending.length-remindedN)+stat("Confirmed (no reminders needed)",conf.length);
+  document.querySelector("#remTable tbody").innerHTML = pending.map(r=>{
+    const rm = r.email ? remindMap[norm(r.email)] : null;
+    const ty = r.guest ? `<span class="pill y">PLUS ONE / GUEST</span>` : `<span class="pill m">Employee</span>`;
+    const sent = rm ? `<span class="pill g">Sent ✓ (${rm.count}×)</span>` : `<span class="pill m">Not yet</span>`;
+    const when = rm ? new Date(rm.lastAt).toLocaleString() : "—";
+    const act = r.guest && !r.email
+      ? `<span style="color:var(--mute);font-size:.78rem">No email on file — remind personally</span>`
+      : `<button onclick="sendReminderTo('${esc(norm(r.email))}','${esc(r.first)}','${esc(r.display)}','${r.guest?"PLUS ONE / GUEST":"EMPLOYEE"}',this)">📣 ${rm?"Resend":"Send"} Reminder</button>`;
+    return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td>${ty}</td>
+    <td><span class="pill m">Not confirmed</span></td><td>${sent}</td>
+    <td style="color:var(--sand)">${when}</td><td><div class="rowActs">${act}</div></td></tr>`;
+  }).join("") || `<tr><td colspan="6" style="text-align:center;color:#8FD98F;padding:2rem">🎉 Everyone has confirmed — no reminders needed!</td></tr>`;
+  const kindPill = k => k==="REMINDER" ? `<span class="pill y">⏰ Reminder</span>` : k==="PREP-3DAY" ? `<span class="pill g">🎉 3-Day Prep + QR</span>` : k==="EVENTDAY" ? `<span class="pill g">🌅 Event Day + QR</span>` : `<span class="pill m">${esc(k)}</span>`;
+  document.querySelector("#notifLogTable tbody").innerHTML = (notifLog||[]).map(n=>
+    `<tr><td><b style="font-weight:500">${esc(n.name||n.email)}</b><div style="color:var(--sand);font-size:.75rem">${esc(n.email)}</div></td>
+    <td>${String(n.atype)==="PLUS ONE / GUEST"?`<span class="pill y">PLUS ONE / GUEST</span>`:`<span class="pill m">Employee</span>`}</td>
+    <td>${kindPill(n.kind)}</td><td style="color:var(--sand)">${new Date(n.at).toLocaleString()}</td>
+    <td>${n.mode==="auto"?`<span class="pill m">Auto</span>`:`<span class="pill y">Manual</span>`}</td>
+    <td><span class="pill g">Sent ✓</span></td></tr>`).join("")
+    || `<tr><td colspan="6" style="text-align:center;color:var(--sand);padding:1.6rem">No notifications sent yet.</td></tr>`;
   /* access tab */
   const blocked = rows.filter(r=>!r.access).length;
   accessStats.innerHTML = stat("Active & Invited",invited.length)+stat("Invitation Opened",openedN)+stat("Confirmed",conf.length)+stat("Not Yet Confirmed",awaiting)+stat("Access Blocked",blocked);
@@ -1331,6 +1382,44 @@ async function resetRSVP(email){
   try{ await dbDel(rk(email)); }catch(e){}
   if(adminRows){ const row=adminRows.find(r=>norm(r.email)===norm(email)); if(row) row.rsvp=null; renderAdminUI(); }
   refreshAdmin();
+}
+async function sendReminderTo(email, first, name, type, btn){
+  if(!email) return;
+  if(btn){ btn.disabled=true; btn.textContent="Sending…"; }
+  try{
+    const r = await fetch(SHEETS_WEBAPP_URL+"?action=remind&email="+encodeURIComponent(email)+"&first="+encodeURIComponent(first)+"&name="+encodeURIComponent(name)+"&type="+encodeURIComponent(type)+"&key="+encodeURIComponent(ADMIN_PASSCODE));
+    const j = await r.json();
+    if(j && j.ok && !j.alreadyConfirmed){
+      const prev = remindMap[email]; remindMap[email] = { lastAt: new Date().toISOString(), count: (prev?prev.count:0)+1 };
+    }
+    if(j && j.alreadyConfirmed){ refreshAdmin(); }
+  }catch(e){}
+  renderAdminUI();
+}
+async function sendAllReminders(btn){
+  if(!adminRows) return;
+  const targets = adminRows.filter(r=>r.access && !(r.rsvp&&r.rsvp.attending) && r.email);
+  if(!targets.length){ alert("No pending people with an email on file — nothing to send."); return; }
+  if(!confirm("Send a reminder email to "+targets.length+" pending "+(targets.length===1?"person":"people")+" now?")) return;
+  const label = btn.textContent; btn.disabled = true;
+  for(let i=0;i<targets.length;i++){
+    btn.textContent = "Sending "+(i+1)+" / "+targets.length+"…";
+    await sendReminderTo(norm(targets[i].email), targets[i].first, targets[i].display, targets[i].guest?"PLUS ONE / GUEST":"EMPLOYEE", null);
+  }
+  btn.disabled = false; btn.textContent = label;
+  renderAdminUI();
+}
+async function sendStage(action, btn){
+  const label = action==="sendprep" ? "3-Day Prep (with each person's own QR)" : "Event-Day morning message (with each person's own QR)";
+  if(!confirm("Send the "+label+" to ALL confirmed attendees now? People who already received it will be skipped automatically.")) return;
+  const old = btn.textContent; btn.disabled=true; btn.textContent="Sending…";
+  try{
+    const r = await fetch(SHEETS_WEBAPP_URL+"?action="+action+"&key="+encodeURIComponent(ADMIN_PASSCODE));
+    const j = await r.json();
+    alert(j && j.ok ? ("Done! Sent: "+j.sent+" · Already had it (skipped): "+j.skipped) : "Something went wrong — try again.");
+  }catch(e){ alert("Connection problem — try again."); }
+  btn.disabled=false; btn.textContent=old;
+  await loadReminders(); renderAdminUI();
 }
 async function toggleGuestAccess(gkey,val){
   try{ const r=await fetch(SHEETS_WEBAPP_URL+"?action=setaccess&id="+encodeURIComponent("guest:"+gkey)+"&val="+val+"&key="+encodeURIComponent(ADMIN_PASSCODE));
