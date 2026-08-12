@@ -719,7 +719,7 @@ const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southea
    paste the /exec URL between the quotes below. Every completed RSVP is
    then logged as a row in the Sheet and the employee instantly receives
    a confirmation email.                                               */
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbzh-FdqOheR3xSHNMRMRKS2AcF7EBB49DBwIa1niHEldQQu2aQENXNmZHUtSi3Ad9wnBw/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxSkeAxcSlCkx6L0Sdt_oodaRijzqnC8oKYVAgZFani9gGVBAk7KVupFcgvXdN_Y0khpg/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
@@ -1161,7 +1161,7 @@ document.querySelectorAll("#adFilters button").forEach(b=>b.addEventListener("cl
 }));
 
 /* ============ Admin data engine — instant UI, silent background sync ============ */
-let adminRows = null, adminSig = "", adminFetching = false;
+let adminRows = null, adminSig = "", adminFetching = false, tokenIndex = {};
 async function buildAdminRows(){
   const roster = await getRoster();
   const remote = await remoteList(); /* the only network call */
@@ -1169,7 +1169,7 @@ async function buildAdminRows(){
   if(remote) remote.forEach(x=>{ if(String(x.attendance)==="Attending") map[norm(x.email)] = {
     attending:true, name:x.name, first:x.first, email:norm(x.email),
     submittedAt:x.timestamp, updatedAt:x.updated||x.timestamp,
-    checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"", emailSent:x.emailSent||"" }; });
+    checkedInAt:x.checkedInAt||null, mealAt:x.mealAt||null, empId:x.empId||"", emailSent:x.emailSent||"", token:x.token||"" }; });
   const rows = [];
   for(const e of roster){
     const key = norm(e.email);
@@ -1178,6 +1178,10 @@ async function buildAdminRows(){
     let opened = null; try{ opened = key ? await dbGet(ok(e.email)) : null; }catch(err){}
     rows.push({...e, rsvp, opened: opened || (rsvp?{firstOpenedAt:rsvp.submittedAt}:null)});
   }
+  /* instant-recognition index: token → employee (lets the scanner show the
+     confirmation screen the moment the camera sees a QR, before the server replies) */
+  tokenIndex = {};
+  rows.forEach(r=>{ if(r.rsvp && r.rsvp.token) tokenIndex[r.rsvp.token] = r; });
   return { rows, sig: JSON.stringify(remote||"none") };
 }
 function stampLive(ok){
@@ -1315,6 +1319,7 @@ function stopScanner(){
 }
 function lookupManual(){ const v=document.getElementById("manualToken").value.trim(); if(v){ onScan(v); document.getElementById("manualToken").value=""; } }
 
+let overlayTimer=null;
 async function onScan(text){
   if(scanBusy) return;
   const token = String(text).replace(/^CC3\|/,"").trim();
@@ -1324,42 +1329,59 @@ async function onScan(text){
   recentScans[token] = nowT;
   scanBusy = true;
   try{ if(navigator.vibrate) navigator.vibrate([60,40,60]); }catch(e){}
-  const j = await evAction(scanMode, token); /* AUTO: records immediately in the selected mode */
-  showScanOverlay(j, scanMode);
-  /* live-update the dashboard */
-  if(j && j.ok && j.info && adminRows){
-    const row = adminRows.find(r=>norm(r.email)===norm(j.info.email));
-    if(row && row.rsvp){ row.rsvp.checkedInAt=j.info.checkedInAt||row.rsvp.checkedInAt; row.rsvp.mealAt=j.info.mealAt||row.rsvp.mealAt; }
-    renderAdminUI();
+
+  /* ===== PHASE 1 — INSTANT: the moment the camera sees the QR ===== */
+  const local = tokenIndex[token] || null;
+  if(local && local.rsvp){
+    const alreadyLocal = scanMode==="checkin" ? local.rsvp.checkedInAt : local.rsvp.mealAt;
+    if(alreadyLocal){
+      paintOverlay("warn", scanMode==="checkin"?"⚠ ALREADY CHECKED IN":"⚠ MEAL ALREADY CLAIMED",
+        local.display, local.empId, "Originally recorded " + new Date(alreadyLocal).toLocaleTimeString());
+    } else {
+      paintOverlay("good", scanMode==="checkin"?"✓ CHECKED IN":"✓ MEAL STUB CONFIRMED",
+        local.display, local.empId, "Recorded " + new Date().toLocaleTimeString());
+      /* optimistic live dashboard update */
+      if(scanMode==="checkin") local.rsvp.checkedInAt = new Date().toISOString(); else local.rsvp.mealAt = new Date().toISOString();
+      renderAdminUI();
+      document.getElementById("scanResult").textContent = "Last: " + local.display + " — " + (scanMode==="checkin"?"checked in":"meal claimed") + " at " + new Date().toLocaleTimeString();
+    }
+  } else {
+    paintOverlay("good", "✓ QR SCANNED", "", "", "Recording…");
+  }
+
+  /* ===== PHASE 2 — server records in the background & corrects if needed ===== */
+  const j = await evAction(scanMode, token);
+  if(!j || !j.ok){
+    paintOverlay("bad", (j && j.error==="not_found") ? "✕ QR NOT RECOGNIZED" : "✕ CONNECTION ERROR — TRY AGAIN", "", "", "");
+  } else {
+    const i=j.info;
+    if(j.already && !(local && ((scanMode==="checkin"&&null) )) ){
+      paintOverlay("warn", scanMode==="checkin"?"⚠ ALREADY CHECKED IN":"⚠ MEAL ALREADY CLAIMED",
+        i.name, i.empId, "Originally recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
+    } else if(!j.already){
+      paintOverlay("good", scanMode==="checkin"?"✓ CHECKED IN":"✓ MEAL STUB CONFIRMED",
+        i.name, i.empId, "Recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
+      document.getElementById("scanResult").textContent = "Last: " + (i.name||"—") + " — " + (scanMode==="checkin"?"checked in":"meal claimed");
+    }
+    /* sync cache with the server's truth */
+    if(adminRows){
+      const row = adminRows.find(r=>norm(r.email)===norm(i.email));
+      if(row && row.rsvp){ row.rsvp.checkedInAt=i.checkedInAt||row.rsvp.checkedInAt; row.rsvp.mealAt=i.mealAt||row.rsvp.mealAt; }
+      renderAdminUI();
+    }
   }
   refreshAdmin();
 }
-function showScanOverlay(j, action){
+function paintOverlay(cls, big, name, empId, time){
   const box = document.getElementById("soBox"), ov = document.getElementById("scanOverlay");
-  const t = d => d ? new Date(d).toLocaleTimeString() : "";
-  let cls, big, name="", id="", time="";
-  if(!j || !j.ok){
-    cls="bad"; big = (j && j.error==="not_found") ? "✕ QR NOT RECOGNIZED" : "✕ CONNECTION ERROR — TRY AGAIN";
-  } else {
-    const i=j.info; name=i.name||""; id=i.empId?("Employee ID: "+i.empId):"";
-    if(j.already){
-      cls="warn";
-      big = action==="checkin" ? "⚠ ALREADY CHECKED IN" : "⚠ MEAL ALREADY CLAIMED";
-      time = "Originally recorded " + t(action==="checkin"?i.checkedInAt:i.mealAt);
-    } else {
-      cls="good";
-      big = action==="checkin" ? "✓ CHECKED IN" : "✓ MEAL STUB CONFIRMED";
-      time = "Recorded " + new Date().toLocaleTimeString();
-      document.getElementById("scanResult").textContent = "Last: " + (name||"—") + " — " + (action==="checkin"?"checked in":"meal claimed") + " at " + new Date().toLocaleTimeString();
-    }
-  }
   box.className = "soBox " + cls;
   box.innerHTML = `<div class="soBig">${big}</div>` +
     (name?`<div class="soName">${esc(name)}</div>`:"") +
-    (id?`<div class="soId">${esc(id)}</div>`:"") +
+    (empId?`<div class="soId">Employee ID: ${esc(empId)}</div>`:"") +
     (time?`<div class="soTime">${esc(time)}</div>`:"");
   ov.classList.add("on");
-  setTimeout(()=>{ ov.classList.remove("on"); scanBusy=false; }, 2300); /* auto-close, ready for next */
+  clearTimeout(overlayTimer);
+  overlayTimer = setTimeout(()=>{ ov.classList.remove("on"); scanBusy=false; }, 2200);
 }
 document.getElementById("scanOverlay").addEventListener("click", ()=>{ document.getElementById("scanOverlay").classList.remove("on"); scanBusy=false; });
 
