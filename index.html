@@ -961,6 +961,22 @@ async function doGuestLogin(){
   const err = document.getElementById("loginErr"); err.textContent="";
   const name = document.getElementById("gName").value;
   const email = norm(document.getElementById("gEmail").value);
+  /* Special guests with an email on file (e.g. the Guest Speaker) can enter
+     through the guest door too — recognized as the SAME account, same QR. */
+  const roster0 = await getRoster();
+  const sp = roster0.find(e=>e.speaker && gKey(e.display)===gKey(name));
+  if(sp){
+    if(!validEmail(email)){ err.textContent = "Please enter a valid email address."; return; }
+    if(norm(email)!==norm(sp.email)){ err.textContent = "This name is registered under a different email. Please use the email address on file with the organizers."; return; }
+    current = {...sp};
+    personalize(current);
+    resetVisitUI();
+    Object.keys(statusCache).forEach(k=>delete statusCache[k]);
+    (async ()=>{ try{ const opened = await dbGet(ok(email)); const now=new Date().toISOString();
+        dbSet(ok(email), { firstOpenedAt: opened?opened.firstOpenedAt:now, lastViewedAt: now }); }catch(e){} })();
+    await enterExperience(remoteStatus(email), document.getElementById("guestBtn"), "Continue as Plus-One Guest");
+    return;
+  }
   const gg = findGuest(name);
   if(!gg){ err.textContent = "This name isn't on the Plus-One guest list. Please check the spelling or contact the organizers."; return; }
   if(!validEmail(email)){ err.textContent = "Please enter a valid email address."; return; }
