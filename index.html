@@ -748,7 +748,7 @@ const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southea
    paste the /exec URL between the quotes below. Every completed RSVP is
    then logged as a row in the Sheet and the employee instantly receives
    a confirmation email.                                               */
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbx3mm3zaW9EByVsoAZZ2vLW0d0MKkJuQ71vwV7e5DtACE29CCiONxSEzxs3ym4AzyQNCw/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyoSNpFIbhj1b92fUYmgPdmI9FaGr2mpqVfJ-tIt6_wxGRCN5YlwWpK3vTW9ExYiUc4Fg/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
@@ -802,6 +802,7 @@ const EMPLOYEES = [
   {first:"PJ", display:"PJ Martinez Bacolod", email:"nica.crosscore2@gmail.com", status:"Active", access:true},
   {first:"Joemar", display:"Joemar Delantar", email:"joemar.crosscore@gmail.com", status:"Active", access:true},
   {first:"Pauline", display:"Pauline Vicente", email:"pauline.vicente14@gmail.com", status:"Active", access:true},
+  {first:"Bien", display:"Bien Villestar", email:"bjvillestar@gmail.com", status:"Guest Speaker", access:true, speaker:true, empId:"GS-001"},
   /* Former / inactive — kept for records, no invitation access by default */
   {first:"Jerrel", display:"Jerrel Pilarta", email:"", status:"Inactive", access:false},
   {first:"Justine", display:"Justine Sarah Salonga Lucas", email:"", status:"Inactive", access:false},
@@ -1076,9 +1077,13 @@ function renderMyPass(info){
   /* top-of-page pass */
   document.getElementById("qrTop").style.display = "block";
   const isGuest = (current && current.guest) || (info.type==="PLUS ONE / GUEST");
+  const isSpeaker = (current && current.speaker) || (info.type==="GUEST SPEAKER");
+  const idLine = isGuest ? "Guest ID: " + empId + " · PLUS ONE / GUEST"
+               : isSpeaker ? "Speaker ID: " + empId + " · GUEST SPEAKER"
+               : "Employee ID: " + empId;
   const wn=document.getElementById("qrWelcomeName"); if(wn) wn.textContent = (current?current.first:info.first) || name;
   document.getElementById("qrName").textContent = name;
-  document.getElementById("qrId").textContent = (isGuest ? "Guest ID: " + empId + " · PLUS ONE / GUEST" : "Employee ID: " + empId);
+  document.getElementById("qrId").textContent = idLine;
   drawQR("qrBox", info.token);
   const chipIn = document.getElementById("chipIn"), chipMeal = document.getElementById("chipMeal");
   if(info.checkedInAt){ chipIn.textContent = "Checked in ✓"; chipIn.classList.add("done"); }
@@ -1089,7 +1094,7 @@ function renderMyPass(info){
   const wrap = document.getElementById("confQRWrap");
   if(wrap){ wrap.style.display = "block";
     document.getElementById("confQRName").textContent = name;
-    document.getElementById("confQRId").textContent = (isGuest ? "Guest ID: " + empId + " · PLUS ONE / GUEST" : "Employee ID: " + empId);
+    document.getElementById("confQRId").textContent = idLine;
     drawQR("confQRBox", info.token);
     const ld = document.getElementById("confQRLoading"); if(ld) ld.style.display = "none";
   }
@@ -1132,7 +1137,8 @@ async function submitSeeYou(){
   if(prev && prev.attending){ markConfirmed(); return; }
   const now = new Date().toISOString();
   const record = { attending:true, seeYouThere:true, email:norm(current.email), name:current.display, first:current.first,
-    empId: current.empId || "", guest: !!current.guest, type: current.guest ? "PLUS ONE / GUEST" : "EMPLOYEE",
+    empId: current.empId || "", guest: !!current.guest,
+    type: current.guest ? "PLUS ONE / GUEST" : (current.speaker ? "GUEST SPEAKER" : "EMPLOYEE"),
     submittedAt: now, updatedAt: now };
   await dbSet(rk(current.email), record);
   /* log to the Google Sheet + trigger the one-time confirmation email */
@@ -1315,7 +1321,7 @@ function renderAdminUI(){
     const em = (r.rsvp&&r.rsvp.emailSent) ? (String(r.rsvp.emailSent).indexOf("Yes")===0?`<span class="pill g">Sent ✓</span>`:`<span class="pill r" title="${esc(r.rsvp.emailSent)}">Failed</span>`) : `<span class="pill m">—</span>`;
     const ci = (r.rsvp&&r.rsvp.checkedInAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.checkedInAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
     const ml = (r.rsvp&&r.rsvp.mealAt) ? `<span class="pill g">✓ ${new Date(r.rsvp.mealAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</span>` : `<span class="pill m">—</span>`;
-    const ty = r.guest ? `<span class="pill y">PLUS ONE / GUEST</span>` : `<span class="pill m">Employee</span>`;
+    const ty = r.guest ? `<span class="pill y">PLUS ONE / GUEST</span>` : r.speaker ? `<span class="pill g">GUEST SPEAKER</span>` : `<span class="pill m">Employee</span>`;
     return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td style="color:var(--sand)">${esc(r.empId||"—")}</td><td>${ty}</td><td style="color:var(--sand)">${esc(r.email)||"—"}</td>
     <td>${st}</td><td>${em}</td><td>${ci}</td><td>${ml}</td>
     <td style="color:var(--sand)">${r.rsvp?new Date(r.rsvp.updatedAt).toLocaleString():"—"}</td>
@@ -1331,12 +1337,12 @@ function renderAdminUI(){
   remStats.innerHTML = stat("Still Pending",pending.length)+stat("Reminded",remindedN)+stat("Not Yet Reminded",pending.length-remindedN)+stat("Confirmed (no reminders needed)",conf.length);
   document.querySelector("#remTable tbody").innerHTML = pending.map(r=>{
     const rm = r.email ? remindMap[norm(r.email)] : null;
-    const ty = r.guest ? `<span class="pill y">PLUS ONE / GUEST</span>` : `<span class="pill m">Employee</span>`;
+    const ty = r.guest ? `<span class="pill y">PLUS ONE / GUEST</span>` : r.speaker ? `<span class="pill g">GUEST SPEAKER</span>` : `<span class="pill m">Employee</span>`;
     const sent = rm ? `<span class="pill g">Sent ✓ (${rm.count}×)</span>` : `<span class="pill m">Not yet</span>`;
     const when = rm ? new Date(rm.lastAt).toLocaleString() : "—";
     const act = r.guest && !r.email
       ? `<span style="color:var(--mute);font-size:.78rem">No email on file — remind personally</span>`
-      : `<button onclick="sendReminderTo('${esc(norm(r.email))}','${esc(r.first)}','${esc(r.display)}','${r.guest?"PLUS ONE / GUEST":"EMPLOYEE"}',this)">📣 ${rm?"Resend":"Send"} Reminder</button>`;
+      : `<button onclick="sendReminderTo('${esc(norm(r.email))}','${esc(r.first)}','${esc(r.display)}','${r.guest?"PLUS ONE / GUEST":(r.speaker?"GUEST SPEAKER":"EMPLOYEE")}',this)">📣 ${rm?"Resend":"Send"} Reminder</button>`;
     return `<tr><td><b style="font-weight:500">${esc(r.display)}</b></td><td>${ty}</td>
     <td><span class="pill m">Not confirmed</span></td><td>${sent}</td>
     <td style="color:var(--sand)">${when}</td><td><div class="rowActs">${act}</div></td></tr>`;
@@ -1500,7 +1506,7 @@ async function onScan(text){
   /* ===== PHASE 1 — INSTANT: the moment the camera sees the QR ===== */
   const local = tokenIndex[token] || null;
   if(local && local.rsvp){
-    const gtag = local.guest ? " · PLUS ONE / GUEST" : "";
+    const gtag = local.guest ? " · PLUS ONE / GUEST" : (local.speaker ? " · GUEST SPEAKER" : "");
     const alreadyLocal = scanMode==="checkin" ? local.rsvp.checkedInAt : local.rsvp.mealAt;
     if(alreadyLocal){
       paintOverlay("warn", scanMode==="checkin"?"⚠ ALREADY CHECKED IN":"⚠ MEAL ALREADY CLAIMED",
@@ -1522,7 +1528,7 @@ async function onScan(text){
   if(!j || !j.ok){
     paintOverlay("bad", (j && j.error==="not_found") ? "✕ QR NOT RECOGNIZED" : "✕ CONNECTION ERROR — TRY AGAIN", "", "", "");
   } else {
-    const i=j.info; const gtag2 = (i.type==="PLUS ONE / GUEST") ? " · PLUS ONE / GUEST" : "";
+    const i=j.info; const gtag2 = (i.type && i.type!=="EMPLOYEE") ? " · " + i.type : "";
     if(j.already && !(local && ((scanMode==="checkin"&&null) )) ){
       paintOverlay("warn", scanMode==="checkin"?"⚠ ALREADY CHECKED IN":"⚠ MEAL ALREADY CLAIMED",
         i.name, i.empId + gtag2, "Originally recorded " + new Date(scanMode==="checkin"?i.checkedInAt:i.mealAt).toLocaleTimeString());
@@ -1572,7 +1578,7 @@ async function createInvitee(){
 async function exportCSV(){
   const rows = await collect();
   const csv = "Name,ID,Type,Email,Invitation Opened,Status,QR Email,Arrival Time,Meal Time,First Confirmed,Last Updated\n" +
-    rows.filter(r=>r.access).map(r=>{const v=r.rsvp||{};return csvRow([r.display,r.empId||"",r.guest?"PLUS ONE / GUEST":"EMPLOYEE",r.email,r.opened?"Yes":"No",(v.attending?"Confirmed":"Not yet"),v.emailSent||"",v.checkedInAt||"",v.mealAt||"",v.submittedAt||"",v.updatedAt||""]);}).join("\n");
+    rows.filter(r=>r.access).map(r=>{const v=r.rsvp||{};return csvRow([r.display,r.empId||"",r.guest?"PLUS ONE / GUEST":(r.speaker?"GUEST SPEAKER":"EMPLOYEE"),r.email,r.opened?"Yes":"No",(v.attending?"Confirmed":"Not yet"),v.emailSent||"",v.checkedInAt||"",v.mealAt||"",v.submittedAt||"",v.updatedAt||""]);}).join("\n");
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="crosscore3-confirmations.csv"; a.click();
 }
