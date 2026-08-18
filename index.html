@@ -748,7 +748,7 @@ const DATABASE_URL = "";   // e.g. "https://crosscore3-default-rtdb.asia-southea
    paste the /exec URL between the quotes below. Every completed RSVP is
    then logged as a row in the Sheet and the employee instantly receives
    a confirmation email.                                               */
-const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbyoSNpFIbhj1b92fUYmgPdmI9FaGr2mpqVfJ-tIt6_wxGRCN5YlwWpK3vTW9ExYiUc4Fg/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
+const SHEETS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxgXKMftSpbOpk_6HNFu8ZJTMp0tKdGTUb4SrzNU7dT9trNeH_jtO0XNSc7gFAS9-BZ7w/exec";  // e.g. "https://script.google.com/macros/s/XXXX/exec"
 
 const ADMIN_PASSCODE = "crosscore@3";
 const ADMIN_EMAILS = [                        // organizers allowed into the dashboard
@@ -760,11 +760,10 @@ const EVENT_TS = new Date("2026-08-22T16:00:00+08:00").getTime();
 const YT_ID = "XXmONTtpfDk"; // Inspiring Acoustic Background Music
 
 const GUESTS = [
-  {name:"Yanna Ruth Fernando"},
-  {name:"Mae Ann Bodiongan"},
-  {name:"Marlo Justine Gando"},
-  {name:"Angel Navarro"}
-].map((g,i)=>({ ...g, id:"G-"+String(i+1).padStart(3,"0") }));
+  {name:"Yanna Ruth Fernando", id:"G-001"},
+  {name:"Mae Ann Bodiongan", id:"G-002"},
+  {name:"Angel Navarro", id:"G-004"}
+];
 const gKey = s => String(s||"").trim().toLowerCase().replace(/\s+/g," ");
 function findGuest(name){ const k=gKey(name); return GUESTS.find(g=>gKey(g.name)===k) || null; }
 let guestAccessMap = null; /* server-backed guest access (Settings sheet) */
@@ -777,31 +776,28 @@ async function guestStatus(name,email){
     const j=await r.json(); return (j&&j.ok)?j:null; }catch(e){ return null; } }
 
 const EMPLOYEES = [
-  {first:"Jose", display:"Jose Andres F. Ygot Jr.", email:"ja.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Norman", display:"Norman Steven P. Dominguez", email:"norman.crosscorestudios@gmail.com", status:"Active", access:true},
-  {first:"Charisse", display:"Charisse Mih Sotto", email:"charis.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Luane", display:"Luane Gail Vinzon", email:"luane.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Kiara", display:"Kiara V. San Luis", email:"kiaravianela.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Tricia", display:"Tricia S. Caber", email:"tricia.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Yamille", display:"Yamille Dominguez", email:"yamille.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Mary Rose", display:"Mary Rose Reynonos", email:"podcastbackstageaccess@gmail.com", status:"Active", access:true},
-  {first:"Cherry Lou", display:"Cherry Lou O. De Vera-Nilo", email:"cherrylou.o.devera@gmail.com", status:"Active", access:true},
-  {first:"Janile", display:"Janile Cesna Zaragosa", email:"jczaragosaa@gmail.com", status:"Active", access:true},
-  {first:"Teresa", display:"Maria Teresa Vere", email:"teresacrosscore@gmail.com", status:"Active", access:true},
-  {first:"Kate", display:"Kate Pouline Hadloc (Lyka)", email:"katepoulinecrosscore@gmail.com", status:"Active", access:true},
-  {first:"Kristia", display:"Kristia Paula Hadloc (Chin)", email:"kristiapaulah.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Colette", display:"Colette Nicole M. Dongon", email:"colette.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Neil", display:"Neil Bryan R. Bogayan", email:"neilbryan.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Sam", display:"Michael Sam J. Flores", email:"sam.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Yuwen", display:"Yuwen Michael V. Fernando", email:"fernandoyuwen@gmail.com", status:"Active", access:true},
-  {first:"Russel", display:"Russel Bengilo", email:"russel.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Alexis", display:"Alexis Bautista", email:"alexis.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Erica", display:"Erica Caber", email:"erica.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Angelica", display:"Angelica Sto. Domingo", email:"eynjsd.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Christian", display:"Christian M. Naperi", email:"christian.crosscore@gmail.com", status:"Active", access:true},
-  {first:"PJ", display:"PJ Martinez Bacolod", email:"nica.crosscore2@gmail.com", status:"Active", access:true},
-  {first:"Joemar", display:"Joemar Delantar", email:"joemar.crosscore@gmail.com", status:"Active", access:true},
-  {first:"Pauline", display:"Pauline Vicente", email:"pauline.vicente14@gmail.com", status:"Active", access:true},
+  {first:"Jose", display:"Jose Andres F. Ygot Jr.", email:"ja.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-001"},
+  {first:"Norman", display:"Norman Steven P. Dominguez", email:"norman.crosscorestudios@gmail.com", status:"Active", access:true, empId:"CC3-002"},
+  {first:"Charisse", display:"Charisse Mih Sotto", email:"charis.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-003"},
+  {first:"Luane", display:"Luane Gail Vinzon", email:"luane.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-004"},
+  {first:"Kiara", display:"Kiara V. San Luis", email:"kiaravianela.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-005"},
+  {first:"Tricia", display:"Tricia S. Caber", email:"tricia.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-006"},
+  {first:"Yamille", display:"Yamille Dominguez", email:"yamille.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-007"},
+  {first:"Teresa", display:"Maria Teresa Vere", email:"teresacrosscore@gmail.com", status:"Active", access:true, empId:"CC3-011"},
+  {first:"Kate", display:"Kate Pouline Hadloc (Lyka)", email:"katepoulinecrosscore@gmail.com", status:"Active", access:true, empId:"CC3-012"},
+  {first:"Kristia", display:"Kristia Paula Hadloc (Chin)", email:"kristiapaulah.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-013"},
+  {first:"Colette", display:"Colette Nicole M. Dongon", email:"colette.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-014"},
+  {first:"Neil", display:"Neil Bryan R. Bogayan", email:"neilbryan.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-015"},
+  {first:"Sam", display:"Michael Sam J. Flores", email:"sam.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-016"},
+  {first:"Yuwen", display:"Yuwen Michael V. Fernando", email:"fernandoyuwen@gmail.com", status:"Active", access:true, empId:"CC3-017"},
+  {first:"Russel", display:"Russel Bengilo", email:"russel.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-018"},
+  {first:"Alexis", display:"Alexis Bautista", email:"alexis.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-019"},
+  {first:"Erica", display:"Erica Caber", email:"erica.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-020"},
+  {first:"Angelica", display:"Angelica Sto. Domingo", email:"eynjsd.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-021"},
+  {first:"Christian", display:"Christian M. Naperi", email:"christian.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-022"},
+  {first:"PJ", display:"PJ Martinez Bacolod", email:"nica.crosscore2@gmail.com", status:"Active", access:true, empId:"CC3-023"},
+  {first:"Joemar", display:"Joemar Delantar", email:"joemar.crosscore@gmail.com", status:"Active", access:true, empId:"CC3-024"},
+  {first:"Pauline", display:"Pauline Vicente", email:"pauline.vicente14@gmail.com", status:"Active", access:true, empId:"CC3-025"},
   {first:"Bien", display:"Bien Villestar", email:"bjvillestar@gmail.com", status:"Guest Speaker", access:true, speaker:true, empId:"GS-001"},
   /* Former / inactive — kept for records, no invitation access by default */
   {first:"Jerrel", display:"Jerrel Pilarta", email:"", status:"Inactive", access:false},
@@ -981,7 +977,8 @@ async function doGuestLogin(){
   if(!gg){ err.textContent = "This name isn't on the Plus-One guest list. Please check the spelling or contact the organizers."; return; }
   if(!validEmail(email)){ err.textContent = "Please enter a valid email address."; return; }
   if(guestAccessMap && guestAccessMap["guest:"+gKey(gg.name)] === false){ go("notfound"); return; }
-  current = { first: gg.name.split(" ")[0], display: gg.name, email, empId: gg.id, guest:true, access:true };
+  const gFirst = gg.name.split(" ").length > 1 ? gg.name.split(" ").slice(0,-1).join(" ") : gg.name;
+  current = { first: gFirst, display: gg.name, email, empId: gg.id, guest:true, access:true };
   personalize(current);
   resetVisitUI();
   Object.keys(statusCache).forEach(k=>delete statusCache[k]);
@@ -1289,7 +1286,7 @@ async function buildAdminRows(){
   GUESTS.forEach(g=>{
     const rsvp = gmap[gKey(g.name)] || null;
     const acc = guestAccessMap ? (guestAccessMap["guest:"+gKey(g.name)] !== false) : true;
-    rows.push({ display:g.name, first:g.name.split(" ")[0], email: rsvp?rsvp.email:"", empId:g.id,
+    rows.push({ display:g.name, first:(g.name.split(" ").length>1?g.name.split(" ").slice(0,-1).join(" "):g.name), email: rsvp?rsvp.email:"", empId:g.id,
       status:"Guest", access:acc, guest:true, rsvp, opened: rsvp?{firstOpenedAt:rsvp.submittedAt}:null });
   });
   /* instant-recognition index: token → employee (lets the scanner show the
